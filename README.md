@@ -11,15 +11,14 @@
 
 ## ✨ Features
 
+- **📦 Dedicated Installer (`SystemPulseInstaller.exe`)**: Easy-to-use setup GUI wizard that extracts the app, creates Desktop & Start Menu shortcuts, and launches SYSTEM PULSE automatically.
+- **🧹 Memory Flush & RAM Optimizer**: One-click memory trim calling Win32 `EmptyWorkingSet` across non-essential processes to free up physical memory.
+- **🚀 Windows Startup Programs Inspector**: Scans HKCU/HKLM registry keys and startup folders to display all autostart apps and command paths.
+- **⚡ Built-in Multi-Core CPU Benchmark**: Concurrent multi-threaded SHA-256 benchmark computing Single-Core and Multi-Core scores.
+- **🔔 Windows System Tray & Floating Mini-Widget**: Tray background minimization with live hover metrics and `TopMost` floating mini-widget mode (`360x240`).
+- **🔌 Active Network Connections Inspector**: Live tracker for active TCP/UDP sockets, remote endpoints, and listening ports.
 - **💻 Native Desktop WebView Application**: `SystemMonitor.exe` runs as a native Windows desktop GUI app with an embedded WebView2 control displaying the real-time telemetry dashboard.
 - **⚡ Real-Time Telemetry Engine**: Powered by C# `System.Diagnostics` and Win32 P/Invoke APIs, streaming low-latency metric updates every 1 second via SignalR WebSockets.
-- **🖥️ CPU & Logical Core Matrix**: Visualizes overall CPU percentage, thread counts, total process count, and individual load bars for every logical core (Core 0 to Core N).
-- **🧠 Memory (RAM) Monitor**: High-precision physical RAM breakdown (Used, Free, Total GB, and Usage Percentage).
-- **💾 Storage Drive Inspector**: Monitors all mounted storage drives (`C:\`, `D:\`), volume labels, file system types (NTFS/ReFS), and used space percentages.
-- **🌐 Network Bandwidth Tracker**: Measures active network adapters, IP addresses, and real-time Download / Upload throughput speeds (KB/s & MB/s).
-- **📊 Interactive Process Manager**: Live process list with search filtering, sorting (by RAM, CPU %, Name, PID), and an interactive **End Task** termination engine.
-- **🎨 Glassmorphic Dark UI**: Built with custom HTML5 Canvas time-series charts, smooth micro-animations, neon status indicators, and responsive CSS grid layout.
-- **📦 Standalone Packaging**: Can be compiled into a single-file `SystemMonitor.exe` that runs standalone on Windows without requiring pre-installed .NET runtimes.
 
 ---
 

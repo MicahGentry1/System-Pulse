@@ -25,7 +25,7 @@
                 </div>
                 <div class="brand-text">
                     <h1>SYSTEM <span>PULSE</span></h1>
-                    <span class="sub-badge">C# .NET 10 Telemetry Suite v1.3</span>
+                    <span class="sub-badge">C# .NET 10 Telemetry Suite v2.0</span>
                 </div>
             </div>
 
@@ -133,7 +133,12 @@
                         </svg>
                         Physical Memory (RAM)
                     </h2>
-                    <span class="big-metric violet" id="ram-pct-text">0%</span>
+                    <div class="head-actions-inline">
+                        <button class="btn btn-secondary btn-sm" id="btn-flush-ram" title="Trim Process Working Sets to free RAM">
+                            🧹 Flush RAM
+                        </button>
+                        <span class="big-metric violet" id="ram-pct-text">0%</span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="chart-container">
@@ -248,6 +253,37 @@
                 </div>
             </div>
 
+            <!-- Windows Startup Apps Card (Full Width) -->
+            <div class="card startup-card full-width">
+                <div class="card-header">
+                    <div class="title-group">
+                        <h2>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                                <line x1="12" y1="2" x2="12" y2="12"></line>
+                            </svg>
+                            Windows Startup Programs
+                        </h2>
+                        <span class="badge-count" id="startup-count">0 programs</span>
+                    </div>
+                </div>
+                <div class="card-body no-padding">
+                    <div class="table-wrapper">
+                        <table class="process-table">
+                            <thead>
+                                <tr>
+                                    <th>Program Name</th>
+                                    <th>Command Path</th>
+                                    <th>Registry / Folder Location</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="startup-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Active TCP Connections & Ports Card (Full Width) -->
             <div class="card sockets-card full-width">
                 <div class="card-header">
@@ -342,7 +378,7 @@
         </main>
 
         <footer class="footer">
-            <span>PULSE Real-Time Telemetry Suite v1.3 &bull; C# ASP.NET Core &amp; WebView2</span>
+            <span>PULSE Real-Time Telemetry Suite v2.0 &bull; C# ASP.NET Core &amp; WebView2</span>
         </footer>
     </div>
 

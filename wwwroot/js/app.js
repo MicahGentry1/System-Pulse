@@ -1,5 +1,5 @@
 /**
- * PULSE System Monitor v1.3 - SignalR Real-Time Telemetry Client
+ * PULSE System Monitor v2.0 - SignalR Real-Time Telemetry Client
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +21,27 @@ document.addEventListener('DOMContentLoaded', () => {
             d.classList.toggle('active', d.getAttribute('data-theme') === theme);
         });
     }
+
+    // Flush RAM Handler
+    const flushRamBtn = document.getElementById('btn-flush-ram');
+    flushRamBtn?.addEventListener('click', async () => {
+        flushRamBtn.disabled = true;
+        flushRamBtn.textContent = '🧹 Flushing...';
+        try {
+            const res = await fetch('/api/memory/flush', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                showToast('RAM Memory Flush', data.message, 'info');
+            } else {
+                showToast('RAM Flush', data.message, 'warning');
+            }
+        } catch (e) {
+            showToast('RAM Flush Error', e.message, 'warning');
+        } finally {
+            flushRamBtn.disabled = false;
+            flushRamBtn.textContent = '🧹 Flush RAM';
+        }
+    });
 
     // Mini-Widget Mode Toggle
     let isMiniMode = false;
@@ -188,6 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // App State
     let latestProcesses = [];
     let latestConnections = [];
+    let latestStartupPrograms = [];
     let activeKillPid = null;
     let activePresetFilter = 'all';
     const seenAlertKeys = new Set();
@@ -196,6 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusEl = document.getElementById('connection-status');
     const procTableBody = document.getElementById('proc-table-body');
     const connTableBody = document.getElementById('conn-table-body');
+    const startupTableBody = document.getElementById('startup-table-body');
+    const startupCountBadge = document.getElementById('startup-count');
     const connSearchInput = document.getElementById('conn-search');
     const connCountBadge = document.getElementById('conn-count');
     const procSearchInput = document.getElementById('proc-search');
@@ -340,14 +364,20 @@ document.addEventListener('DOMContentLoaded', () => {
             renderConnectionsTable();
         }
 
-        // 8. Benchmark Update
+        // 8. Startup Programs
+        if (snapshot.startupPrograms) {
+            latestStartupPrograms = snapshot.startupPrograms;
+            renderStartupTable();
+        }
+
+        // 9. Benchmark Update
         if (snapshot.latestBenchmark && !snapshot.latestBenchmark.isRunning && benchSingleEl && benchMultiEl) {
             benchSingleEl.textContent = snapshot.latestBenchmark.singleCoreScore.toLocaleString() + ' PTS';
             benchMultiEl.textContent = snapshot.latestBenchmark.multiCoreScore.toLocaleString() + ' PTS';
             benchStatusText.textContent = `Tier: ${snapshot.latestBenchmark.scoreRating}`;
         }
 
-        // 9. Alerts
+        // 10. Alerts
         if (snapshot.alerts && snapshot.alerts.length > 0) {
             snapshot.alerts.forEach(alert => {
                 const key = `${alert.title}:${alert.message}`;
@@ -359,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // 10. Processes
+        // 11. Processes
         if (snapshot.processes) {
             latestProcesses = snapshot.processes;
             renderProcessTable();
@@ -454,6 +484,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span><strong>${ni.name}</strong> (${ni.ipAddress || 'No IPv4'})</span>
                 <span>↓ ${formatSpeed(ni.downloadSpeedKbps)} | ↑ ${formatSpeed(ni.uploadSpeedKbps)}</span>
             </div>
+        `).join('');
+    }
+
+    function renderStartupTable() {
+        if (!startupTableBody) return;
+        if (startupCountBadge) startupCountBadge.textContent = `${latestStartupPrograms.length} programs`;
+
+        startupTableBody.innerHTML = latestStartupPrograms.map(sp => `
+            <tr>
+                <td><strong class="proc-name">${escapeHtml(sp.name)}</strong></td>
+                <td><span class="proc-pid">${escapeHtml(sp.command)}</span></td>
+                <td>${escapeHtml(sp.location)}</td>
+                <td><span class="speed-badge down">Enabled</span></td>
+            </tr>
         `).join('');
     }
 

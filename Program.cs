@@ -43,7 +43,6 @@ namespace SystemMonitor
 
             var webApp = builder.Build();
 
-            // Configure EmbeddedFileProvider for static web assets
             var assembly = typeof(Program).Assembly;
             IFileProvider fileProvider;
             try
@@ -66,7 +65,6 @@ namespace SystemMonitor
             webApp.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
             webApp.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
 
-            // Fail-safe embedded resource routes for single-file deployment
             webApp.MapGet("/", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
             webApp.MapGet("/index.html", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
             webApp.MapGet("/css/styles.css", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "css.styles.css", "text/css"));
@@ -77,6 +75,17 @@ namespace SystemMonitor
             webApp.MapGet("/api/system/snapshot", (SystemMetricsCollector collector) =>
             {
                 return Results.Ok(collector.CollectSnapshot());
+            });
+
+            webApp.MapPost("/api/memory/flush", (SystemMetricsCollector collector) =>
+            {
+                var res = collector.FlushMemory();
+                return Results.Ok(res);
+            });
+
+            webApp.MapGet("/api/startup/programs", (SystemMetricsCollector collector) =>
+            {
+                return Results.Ok(collector.GetStartupPrograms());
             });
 
             webApp.MapPost("/api/benchmark/run", async (SystemMetricsCollector collector) =>
@@ -156,7 +165,6 @@ namespace SystemMonitor
                 return;
             }
 
-            // Fallback to disk if resource stream name varies
             var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath.Replace(".", "/"));
             if (File.Exists(diskPath))
             {

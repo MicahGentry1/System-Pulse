@@ -1,5 +1,5 @@
 /* ==========================================================================
-   PULSE System Monitor v1.3 - Dynamic Theme & Accent System
+   PULSE System Monitor v2.0 - Dynamic Theme & Accent System
    ========================================================================== */
 
 :root {
@@ -62,6 +62,8 @@ body {
 .theme-dot.emerald { background: #00f5a0; }
 .theme-dot.crimson { background: #ff416c; }
 .theme-dot.gold { background: #ffb703; }
+
+.head-actions-inline { display: flex; align-items: center; gap: 12px; }
 
 /* Benchmark Card */
 .bench-stats-grid {

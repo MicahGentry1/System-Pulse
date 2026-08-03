@@ -13,6 +13,7 @@ namespace SystemMonitor.Models
         public List<DiskMetrics> Disks { get; set; } = new();
         public List<NetworkMetrics> NetworkInterfaces { get; set; } = new();
         public List<NetworkConnectionItem> ActiveConnections { get; set; } = new();
+        public List<StartupProgramItem> StartupPrograms { get; set; } = new();
         public List<ProcessItem> Processes { get; set; } = new();
         public List<SystemAlert> Alerts { get; set; } = new();
         public BenchmarkResult? LatestBenchmark { get; set; }
@@ -65,6 +66,8 @@ namespace SystemMonitor.Models
         public double UsedGb { get; set; }
         public double FreeGb { get; set; }
         public float UsagePercentage { get; set; }
+        public double ReadSpeedMBps { get; set; }
+        public double WriteSpeedMBps { get; set; }
     }
 
     public class NetworkMetrics
@@ -85,6 +88,14 @@ namespace SystemMonitor.Models
         public string State { get; set; } = string.Empty;
         public string Protocol { get; set; } = "TCP";
         public int Port { get; set; }
+    }
+
+    public class StartupProgramItem
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Command { get; set; } = string.Empty;
+        public string Location { get; set; } = string.Empty;
+        public bool IsEnabled { get; set; } = true;
     }
 
     public class ProcessItem
@@ -120,6 +131,13 @@ namespace SystemMonitor.Models
     public class ProcessActionResult
     {
         public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    public class FlushMemoryResult
+    {
+        public bool Success { get; set; }
+        public double FreedMb { get; set; }
         public string Message { get; set; } = string.Empty;
     }
 

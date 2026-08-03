@@ -30,6 +30,7 @@ namespace SystemMonitor
 #endif
         public static int BoundPort { get; private set; } = 5200;
 
+        [STAThread]
         public static void Main(string[] args)
         {
             if (OperatingSystem.IsWindows())

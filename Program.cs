@@ -2,10 +2,13 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Net.Http;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Web.WebView2.WinForms;
 using SystemMonitor.Hubs;
@@ -24,13 +27,13 @@ namespace SystemMonitor
             ApplicationConfiguration.Initialize();
 
             var baseDir = AppContext.BaseDirectory;
-            var webRoot = Path.Combine(baseDir, "wwwroot");
+            var diskWebRoot = Path.Combine(baseDir, "wwwroot");
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
                 Args = args,
                 ContentRootPath = baseDir,
-                WebRootPath = Directory.Exists(webRoot) ? webRoot : baseDir
+                WebRootPath = Directory.Exists(diskWebRoot) ? diskWebRoot : baseDir
             });
 
             builder.Services.AddSingleton<SystemMetricsCollector>();
@@ -40,8 +43,34 @@ namespace SystemMonitor
 
             var webApp = builder.Build();
 
-            webApp.UseDefaultFiles();
-            webApp.UseStaticFiles();
+            // Configure EmbeddedFileProvider for static web assets
+            var assembly = typeof(Program).Assembly;
+            IFileProvider fileProvider;
+            try
+            {
+                var embeddedProvider = new EmbeddedFileProvider(assembly, "SystemMonitor.wwwroot");
+                if (Directory.Exists(diskWebRoot))
+                {
+                    fileProvider = new CompositeFileProvider(new PhysicalFileProvider(diskWebRoot), embeddedProvider);
+                }
+                else
+                {
+                    fileProvider = embeddedProvider;
+                }
+            }
+            catch
+            {
+                fileProvider = new PhysicalFileProvider(Directory.Exists(diskWebRoot) ? diskWebRoot : baseDir);
+            }
+
+            webApp.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+            webApp.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+
+            // Fail-safe embedded resource routes for single-file deployment
+            webApp.MapGet("/", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
+            webApp.MapGet("/index.html", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
+            webApp.MapGet("/css/styles.css", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "css.styles.css", "text/css"));
+            webApp.MapGet("/js/app.js", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "js.app.js", "application/javascript"));
 
             webApp.MapHub<MetricsHub>("/hubs/metrics");
 
@@ -112,6 +141,28 @@ namespace SystemMonitor
 
             MainWindowInstance = new MainWindow(webApp);
             Application.Run(MainWindowInstance);
+        }
+
+        private static async Task ServeEmbeddedAssetAsync(HttpContext ctx, string relativePath, string contentType)
+        {
+            var assembly = typeof(Program).Assembly;
+            var resourceName = $"SystemMonitor.wwwroot.{relativePath}";
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream != null)
+            {
+                ctx.Response.ContentType = contentType;
+                await stream.CopyToAsync(ctx.Response.Body);
+                return;
+            }
+
+            // Fallback to disk if resource stream name varies
+            var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath.Replace(".", "/"));
+            if (File.Exists(diskPath))
+            {
+                ctx.Response.ContentType = contentType;
+                await ctx.Response.SendFileAsync(diskPath);
+            }
         }
     }
 
@@ -194,7 +245,7 @@ namespace SystemMonitor
 
                 using (var httpClient = new HttpClient())
                 {
-                    for (int i = 0; i < 20; i++)
+                    for (int i = 0; i < 35; i++)
                     {
                         try
                         {

@@ -1,7 +1,10 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -20,20 +23,28 @@ namespace SystemMonitor
     public static class Program
     {
         public static MainWindow? MainWindowInstance { get; private set; }
+        public static int BoundPort { get; private set; } = 5200;
 
         [STAThread]
         public static void Main(string[] args)
         {
             ApplicationConfiguration.Initialize();
 
+            // Terminate any duplicate running instance to prevent port lock
+            KillDuplicateInstances();
+
             var baseDir = AppContext.BaseDirectory;
             var diskWebRoot = Path.Combine(baseDir, "wwwroot");
+            if (!Directory.Exists(diskWebRoot))
+            {
+                Directory.CreateDirectory(diskWebRoot);
+            }
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
                 Args = args,
                 ContentRootPath = baseDir,
-                WebRootPath = Directory.Exists(diskWebRoot) ? diskWebRoot : baseDir
+                WebRootPath = diskWebRoot
             });
 
             builder.Services.AddSingleton<SystemMetricsCollector>();
@@ -43,32 +54,28 @@ namespace SystemMonitor
 
             var webApp = builder.Build();
 
-            var assembly = typeof(Program).Assembly;
-            IFileProvider fileProvider;
-            try
+            // Intercept static file requests with explicit embedded stream fallback
+            webApp.Use(async (context, next) =>
             {
-                var embeddedProvider = new EmbeddedFileProvider(assembly, "SystemMonitor.wwwroot");
-                if (Directory.Exists(diskWebRoot))
+                var path = context.Request.Path.Value?.ToLower() ?? "/";
+                if (path == "/" || path == "/index.html")
                 {
-                    fileProvider = new CompositeFileProvider(new PhysicalFileProvider(diskWebRoot), embeddedProvider);
+                    if (await TryServeFileOrResourceAsync(context, "index.html", "text/html")) return;
                 }
-                else
+                else if (path == "/css/styles.css")
                 {
-                    fileProvider = embeddedProvider;
+                    if (await TryServeFileOrResourceAsync(context, "css/styles.css", "text/css")) return;
                 }
-            }
-            catch
-            {
-                fileProvider = new PhysicalFileProvider(Directory.Exists(diskWebRoot) ? diskWebRoot : baseDir);
-            }
+                else if (path == "/js/app.js")
+                {
+                    if (await TryServeFileOrResourceAsync(context, "js/app.js", "application/javascript")) return;
+                }
 
-            webApp.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-            webApp.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+                await next();
+            });
 
-            webApp.MapGet("/", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
-            webApp.MapGet("/index.html", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "index.html", "text/html"));
-            webApp.MapGet("/css/styles.css", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "css.styles.css", "text/css"));
-            webApp.MapGet("/js/app.js", async (HttpContext ctx) => await ServeEmbeddedAssetAsync(ctx, "js.app.js", "application/javascript"));
+            webApp.UseDefaultFiles();
+            webApp.UseStaticFiles();
 
             webApp.MapHub<MetricsHub>("/hubs/metrics");
 
@@ -136,11 +143,14 @@ namespace SystemMonitor
                 return Results.File(System.Text.Encoding.UTF8.GetBytes(jsonStr), "application/json", $"system_telemetry_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
             });
 
+            // Find an available port between 5200 and 5210
+            BoundPort = FindAvailablePort(5200, 5210);
+
             Task.Run(async () =>
             {
                 try
                 {
-                    await webApp.RunAsync("http://localhost:5200");
+                    await webApp.RunAsync($"http://127.0.0.1:{BoundPort}");
                 }
                 catch (Exception ex)
                 {
@@ -152,25 +162,61 @@ namespace SystemMonitor
             Application.Run(MainWindowInstance);
         }
 
-        private static async Task ServeEmbeddedAssetAsync(HttpContext ctx, string relativePath, string contentType)
+        private static void KillDuplicateInstances()
         {
-            var assembly = typeof(Program).Assembly;
-            var resourceName = $"SystemMonitor.wwwroot.{relativePath}";
+            try
+            {
+                int currentPid = Environment.ProcessId;
+                foreach (var p in Process.GetProcessesByName("SystemMonitor"))
+                {
+                    if (p.Id != currentPid)
+                    {
+                        try { p.Kill(); } catch { }
+                    }
+                }
+            }
+            catch { }
+        }
 
+        private static int FindAvailablePort(int startPort, int endPort)
+        {
+            for (int port = startPort; port <= endPort; port++)
+            {
+                try
+                {
+                    var listener = new TcpListener(IPAddress.Loopback, port);
+                    listener.Start();
+                    listener.Stop();
+                    return port;
+                }
+                catch { }
+            }
+            return startPort;
+        }
+
+        private static async Task<bool> TryServeFileOrResourceAsync(HttpContext ctx, string relativePath, string contentType)
+        {
+            // 1. Try Disk Path
+            var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath);
+            if (File.Exists(diskPath))
+            {
+                ctx.Response.ContentType = contentType;
+                await ctx.Response.SendFileAsync(diskPath);
+                return true;
+            }
+
+            // 2. Try Embedded Resource Stream
+            var assembly = typeof(Program).Assembly;
+            var resourceName = $"SystemMonitor.wwwroot.{relativePath.Replace("/", ".")}";
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream != null)
             {
                 ctx.Response.ContentType = contentType;
                 await stream.CopyToAsync(ctx.Response.Body);
-                return;
+                return true;
             }
 
-            var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath.Replace(".", "/"));
-            if (File.Exists(diskPath))
-            {
-                ctx.Response.ContentType = contentType;
-                await ctx.Response.SendFileAsync(diskPath);
-            }
+            return false;
         }
     }
 
@@ -251,21 +297,23 @@ namespace SystemMonitor
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
+                string targetUrl = $"http://127.0.0.1:{Program.BoundPort}";
+
                 using (var httpClient = new HttpClient())
                 {
-                    for (int i = 0; i < 35; i++)
+                    for (int i = 0; i < 40; i++)
                     {
                         try
                         {
-                            var res = await httpClient.GetAsync("http://localhost:5200/api/system/snapshot");
+                            var res = await httpClient.GetAsync($"{targetUrl}/api/system/snapshot");
                             if (res.IsSuccessStatusCode) break;
                         }
                         catch { }
-                        await Task.Delay(200);
+                        await Task.Delay(150);
                     }
                 }
 
-                _webView.CoreWebView2.Navigate("http://localhost:5200");
+                _webView.CoreWebView2.Navigate(targetUrl);
             }
             catch (Exception ex)
             {

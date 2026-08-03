@@ -45,6 +45,30 @@ namespace SystemMonitor
                 return result.Success ? Results.Ok(result) : Results.BadRequest(result);
             });
 
+            webApp.MapPost("/api/process/{pid:int}/priority", (int pid, PriorityRequest req, SystemMetricsCollector collector) =>
+            {
+                var result = collector.SetProcessPriority(pid, req.Priority);
+                return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+            });
+
+            webApp.MapGet("/api/system/export", (string? format, SystemMetricsCollector collector) =>
+            {
+                var snapshot = collector.CollectSnapshot();
+                if (format?.ToLower() == "csv")
+                {
+                    var csv = new System.Text.StringBuilder();
+                    csv.AppendLine("PID,ProcessName,MemoryMB,CpuPercentage,Threads,PriorityClass");
+                    foreach (var p in snapshot.Processes)
+                    {
+                        csv.AppendLine($"{p.Pid},\"{p.Name}\",{p.WorkingSetMb},{p.CpuPercentage},{p.ThreadCount},{p.PriorityClass}");
+                    }
+                    return Results.File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"system_telemetry_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
+                }
+
+                var jsonStr = System.Text.Json.JsonSerializer.Serialize(snapshot, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                return Results.File(System.Text.Encoding.UTF8.GetBytes(jsonStr), "application/json", $"system_telemetry_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
+            });
+
             // Start Kestrel web server on http://localhost:5200 asynchronously
             Task.Run(async () =>
             {

@@ -21,7 +21,7 @@ namespace SystemMonitor.Services
         private bool _isPerformanceCounterAvailable = false;
         private readonly string _cpuName = string.Empty;
 
-        // P/Invoke for exact physical RAM on Windows
+        // P/Invoke for physical RAM on Windows
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private class MEMORYSTATUSEX
         {
@@ -45,6 +45,21 @@ namespace SystemMonitor.Services
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
 
+        // P/Invoke for Battery and Power Status
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SYSTEM_POWER_STATUS
+        {
+            public byte ACLineStatus; // 0 = Offline, 1 = Online, 255 = Unknown
+            public byte BatteryFlag;  // 1 = High, 2 = Low, 4 = Critical, 8 = Charging, 128 = No battery
+            public byte BatteryLifePercent; // 0-100 or 255
+            public byte SystemStatusFlag;
+            public int BatteryLifeTime;
+            public int BatteryFullLifeTime;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+
         public SystemMetricsCollector()
         {
             InitCpuCounters();
@@ -58,7 +73,7 @@ namespace SystemMonitor.Services
                 try
                 {
                     _overallCpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-                    _overallCpuCounter.NextValue(); // First reading is always 0
+                    _overallCpuCounter.NextValue();
 
                     int coreCount = Environment.ProcessorCount;
                     for (int i = 0; i < coreCount; i++)
@@ -71,7 +86,7 @@ namespace SystemMonitor.Services
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[MetricsCollector] Warning: PerformanceCounter initialization failed ({ex.Message}). Falling back to time-sampling.");
+                    Console.WriteLine($"[MetricsCollector] Warning: PerformanceCounter init failed ({ex.Message}).");
                     _isPerformanceCounterAvailable = false;
                 }
             }
@@ -103,10 +118,14 @@ namespace SystemMonitor.Services
                 SystemInfo = GetSystemInfo(),
                 Cpu = GetCpuMetrics(),
                 Memory = GetMemoryMetrics(),
+                Power = GetPowerMetrics(),
                 Disks = GetDiskMetrics(),
                 NetworkInterfaces = GetNetworkMetrics(),
-                Processes = GetTopProcesses(60)
+                Processes = GetTopProcesses(80)
             };
+
+            // Evaluate Alert Rules
+            snapshot.Alerts = EvaluateAlerts(snapshot);
 
             return snapshot;
         }
@@ -163,7 +182,6 @@ namespace SystemMonitor.Services
                 catch { }
             }
 
-            // Fallback for CPU core usage
             cpu.OverallUsage = 15.0f;
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
@@ -197,12 +215,46 @@ namespace SystemMonitor.Services
                 catch { }
             }
 
-            // Fallback estimate
             mem.TotalMb = 16384;
             mem.UsedMb = 8192;
             mem.FreeMb = 8192;
             mem.UsagePercentage = 50.0f;
             return mem;
+        }
+
+        private PowerMetrics GetPowerMetrics()
+        {
+            var power = new PowerMetrics();
+            try
+            {
+                if (GetSystemPowerStatus(out var sps))
+                {
+                    power.IsAcOnline = sps.ACLineStatus == 1;
+                    power.HasBattery = sps.BatteryFlag != 128 && sps.BatteryLifePercent != 255;
+                    power.BatteryLifePercent = sps.BatteryLifePercent <= 100 ? sps.BatteryLifePercent : 100;
+                    power.IsCharging = (sps.BatteryFlag & 8) != 0;
+                    power.BatteryLifeTimeSeconds = sps.BatteryLifeTime;
+
+                    if (!power.HasBattery)
+                    {
+                        power.PowerStatusText = "Desktop (AC Power)";
+                    }
+                    else if (power.IsCharging)
+                    {
+                        power.PowerStatusText = $"Charging ({power.BatteryLifePercent}%)";
+                    }
+                    else if (power.IsAcOnline)
+                    {
+                        power.PowerStatusText = $"Plugged In ({power.BatteryLifePercent}%)";
+                    }
+                    else
+                    {
+                        power.PowerStatusText = $"On Battery ({power.BatteryLifePercent}%)";
+                    }
+                }
+            }
+            catch { }
+            return power;
         }
 
         private List<DiskMetrics> GetDiskMetrics()
@@ -266,8 +318,8 @@ namespace SystemMonitor.Services
                             long diffRecv = Math.Max(0, bytesRecv - prev.bytesRecv);
                             long diffSent = Math.Max(0, bytesSent - prev.bytesSent);
 
-                            downSpeed = (diffRecv / 1024.0) / elapsedSec; // KB/s
-                            upSpeed = (diffSent / 1024.0) / elapsedSec; // KB/s
+                            downSpeed = (diffRecv / 1024.0) / elapsedSec;
+                            upSpeed = (diffSent / 1024.0) / elapsedSec;
                         }
                     }
 
@@ -322,7 +374,10 @@ namespace SystemMonitor.Services
                         string name = p.ProcessName;
                         double memoryMb = Math.Round(p.WorkingSet64 / (1024.0 * 1024.0), 1);
                         int threads = 0;
+                        string priorityStr = "Normal";
+
                         try { threads = p.Threads.Count; } catch { }
+                        try { priorityStr = p.PriorityClass.ToString(); } catch { }
 
                         float cpuPct = 0f;
                         try
@@ -349,7 +404,8 @@ namespace SystemMonitor.Services
                             Name = name,
                             WorkingSetMb = memoryMb,
                             CpuPercentage = (float)Math.Round(cpuPct, 1),
-                            ThreadCount = threads
+                            ThreadCount = threads,
+                            PriorityClass = priorityStr
                         });
                     }
                     catch { }
@@ -357,37 +413,94 @@ namespace SystemMonitor.Services
             }
             catch { }
 
-            // Sort by Memory Working Set descending
             return list.OrderByDescending(p => p.WorkingSetMb).Take(count).ToList();
         }
 
-        public ProcessKillResult KillProcess(int pid)
+        private List<SystemAlert> EvaluateAlerts(SystemSnapshot snap)
+        {
+            var alerts = new List<SystemAlert>();
+
+            if (snap.Cpu.OverallUsage > 85.0f)
+            {
+                alerts.Add(new SystemAlert
+                {
+                    Type = "Warning",
+                    Title = "High CPU Load",
+                    Message = $"CPU utilization is at {snap.Cpu.OverallUsage:F1}%"
+                });
+            }
+
+            if (snap.Memory.UsagePercentage > 90.0f)
+            {
+                alerts.Add(new SystemAlert
+                {
+                    Type = "Critical",
+                    Title = "High Memory Usage",
+                    Message = $"Physical Memory is at {snap.Memory.UsagePercentage:F1}% ({snap.Memory.UsedMb / 1024:F1} GB)"
+                });
+            }
+
+            foreach (var d in snap.Disks)
+            {
+                if (d.UsagePercentage > 92.0f)
+                {
+                    alerts.Add(new SystemAlert
+                    {
+                        Type = "Warning",
+                        Title = $"Drive Space Warning ({d.Name})",
+                        Message = $"{d.VolumeLabel} has only {d.FreeGb:F1} GB ({100 - d.UsagePercentage:F1}%) remaining."
+                    });
+                }
+            }
+
+            return alerts;
+        }
+
+        public ProcessActionResult KillProcess(int pid)
         {
             try
             {
                 var proc = Process.GetProcessById(pid);
                 string procName = proc.ProcessName;
                 proc.Kill(entireProcessTree: true);
-                return new ProcessKillResult
+                return new ProcessActionResult
                 {
                     Success = true,
                     Message = $"Successfully terminated process '{procName}' (PID: {pid})."
                 };
             }
-            catch (ArgumentException)
-            {
-                return new ProcessKillResult
-                {
-                    Success = false,
-                    Message = $"Process with PID {pid} was not found or has already exited."
-                };
-            }
             catch (Exception ex)
             {
-                return new ProcessKillResult
+                return new ProcessActionResult
                 {
                     Success = false,
                     Message = $"Failed to kill process {pid}: {ex.Message}"
+                };
+            }
+        }
+
+        public ProcessActionResult SetProcessPriority(int pid, string priorityName)
+        {
+            try
+            {
+                var proc = Process.GetProcessById(pid);
+                if (Enum.TryParse<ProcessPriorityClass>(priorityName, true, out var priorityClass))
+                {
+                    proc.PriorityClass = priorityClass;
+                    return new ProcessActionResult
+                    {
+                        Success = true,
+                        Message = $"Updated process '{proc.ProcessName}' (PID: {pid}) priority to {priorityClass}."
+                    };
+                }
+                return new ProcessActionResult { Success = false, Message = $"Invalid priority level '{priorityName}'." };
+            }
+            catch (Exception ex)
+            {
+                return new ProcessActionResult
+                {
+                    Success = false,
+                    Message = $"Failed to change priority for PID {pid}: {ex.Message}"
                 };
             }
         }

@@ -20,9 +20,15 @@ namespace SystemMonitor.Hubs
             await Clients.Caller.SendAsync("ReceiveMetrics", snapshot);
         }
 
-        public Task<ProcessKillResult> KillProcess(int pid)
+        public Task<ProcessActionResult> KillProcess(int pid)
         {
             var result = _collector.KillProcess(pid);
+            return Task.FromResult(result);
+        }
+
+        public Task<ProcessActionResult> SetPriority(int pid, string priority)
+        {
+            var result = _collector.SetProcessPriority(pid, priority);
             return Task.FromResult(result);
         }
     }

@@ -9,9 +9,11 @@ namespace SystemMonitor.Models
         public SystemInfo SystemInfo { get; set; } = new();
         public CpuMetrics Cpu { get; set; } = new();
         public MemoryMetrics Memory { get; set; } = new();
+        public PowerMetrics Power { get; set; } = new();
         public List<DiskMetrics> Disks { get; set; } = new();
         public List<NetworkMetrics> NetworkInterfaces { get; set; } = new();
         public List<ProcessItem> Processes { get; set; } = new();
+        public List<SystemAlert> Alerts { get; set; } = new();
     }
 
     public class SystemInfo
@@ -39,6 +41,16 @@ namespace SystemMonitor.Models
         public double UsedMb { get; set; }
         public double FreeMb { get; set; }
         public float UsagePercentage { get; set; }
+    }
+
+    public class PowerMetrics
+    {
+        public bool HasBattery { get; set; }
+        public bool IsAcOnline { get; set; }
+        public bool IsCharging { get; set; }
+        public int BatteryLifePercent { get; set; }
+        public int BatteryLifeTimeSeconds { get; set; }
+        public string PowerStatusText { get; set; } = "AC Power";
     }
 
     public class DiskMetrics
@@ -71,12 +83,26 @@ namespace SystemMonitor.Models
         public double WorkingSetMb { get; set; }
         public float CpuPercentage { get; set; }
         public int ThreadCount { get; set; }
+        public string PriorityClass { get; set; } = "Normal";
         public string Status { get; set; } = "Running";
     }
 
-    public class ProcessKillResult
+    public class SystemAlert
+    {
+        public string Type { get; set; } = "Info"; // Info, Warning, Critical
+        public string Title { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ProcessActionResult
     {
         public bool Success { get; set; }
         public string Message { get; set; } = string.Empty;
+    }
+
+    public class PriorityRequest
+    {
+        public string Priority { get; set; } = "Normal";
     }
 }

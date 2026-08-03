@@ -5,15 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PULSE C# System Monitor</title>
     <link rel="stylesheet" href="css/styles.css">
-    <!-- Google Fonts for modern typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- SignalR Client Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 </head>
 <body>
     <div class="app-container">
+        <!-- Toast Alert Container -->
+        <div class="toast-container" id="toast-container"></div>
+
         <!-- Top Navigation Header -->
         <header class="header">
             <div class="brand">
@@ -24,7 +25,7 @@
                 </div>
                 <div class="brand-text">
                     <h1>SYSTEM <span>PULSE</span></h1>
-                    <span class="sub-badge">C# .NET 10 Telemetry Engine</span>
+                    <span class="sub-badge">C# .NET 10 Telemetry Suite</span>
                 </div>
             </div>
 
@@ -47,9 +48,27 @@
                 </div>
             </div>
 
-            <div class="status-indicator" id="connection-status">
-                <span class="pulse-dot"></span>
-                <span class="status-text">Connecting...</span>
+            <div class="header-actions">
+                <!-- Export Telemetry Dropdown -->
+                <div class="export-dropdown">
+                    <button class="btn btn-secondary btn-sm" id="btn-export">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Export Report
+                    </button>
+                    <div class="export-menu hidden" id="export-menu">
+                        <a href="/api/system/export?format=json" download class="export-opt">Export JSON</a>
+                        <a href="/api/system/export?format=csv" download class="export-opt">Export CSV</a>
+                    </div>
+                </div>
+
+                <div class="status-indicator" id="connection-status">
+                    <span class="pulse-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
             </div>
         </header>
 
@@ -85,9 +104,7 @@
                         <div>Cores: <strong id="cpu-core-count">0</strong></div>
                     </div>
                     <div class="core-matrix-title">Logical Core Load</div>
-                    <div class="core-matrix-grid" id="core-matrix">
-                        <!-- Dynamically injected core bars -->
-                    </div>
+                    <div class="core-matrix-grid" id="core-matrix"></div>
                 </div>
             </div>
 
@@ -121,6 +138,31 @@
                 </div>
             </div>
 
+            <!-- Power & Battery Card -->
+            <div class="card power-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="1" y="6" width="18" height="12" rx="2" ry="2"></rect>
+                            <line x1="23" y1="11" x2="23" y2="13"></line>
+                        </svg>
+                        Power &amp; Battery
+                    </h2>
+                    <span class="big-metric green" id="power-pct-text">--%</span>
+                </div>
+                <div class="card-body">
+                    <div class="power-widget-content">
+                        <div class="power-status-pill" id="power-status-pill">
+                            <span class="power-icon" id="power-icon">🔌</span>
+                            <span id="power-status-label">AC Power Connected</span>
+                        </div>
+                        <div class="battery-bar-bg">
+                            <div class="battery-bar-fill" id="battery-bar-fill" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Storage Card -->
             <div class="card storage-card">
                 <div class="card-header">
@@ -135,14 +177,12 @@
                     </h2>
                 </div>
                 <div class="card-body">
-                    <div class="drives-list" id="drives-list">
-                        <!-- Dynamically injected drive rows -->
-                    </div>
+                    <div class="drives-list" id="drives-list"></div>
                 </div>
             </div>
 
-            <!-- Network Card -->
-            <div class="card network-card">
+            <!-- Network Card (Full Width) -->
+            <div class="card network-card full-width">
                 <div class="card-header">
                     <h2>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -162,9 +202,7 @@
                     <div class="chart-container">
                         <canvas id="net-chart"></canvas>
                     </div>
-                    <div class="net-interfaces-list" id="net-interfaces-list">
-                        <!-- Dynamically injected interface details -->
-                    </div>
+                    <div class="net-interfaces-list" id="net-interfaces-list"></div>
                 </div>
             </div>
 
@@ -183,16 +221,23 @@
                         </h2>
                         <span class="badge-count" id="proc-filtered-count">0 processes</span>
                     </div>
+
+                    <div class="filter-chips">
+                        <button class="chip active" data-filter="all">All</button>
+                        <button class="chip" data-filter="cpu">High CPU (>2%)</button>
+                        <button class="chip" data-filter="ram">High RAM (>150MB)</button>
+                    </div>
+
                     <div class="table-controls">
                         <div class="search-box">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="11" cy="11" r="8"></circle>
                                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
-                            <input type="text" id="proc-search" placeholder="Search by name or PID...">
+                            <input type="text" id="proc-search" placeholder="Search name or PID...">
                         </div>
                         <div class="select-box">
-                            <label>Sort By:</label>
+                            <label>Sort:</label>
                             <select id="proc-sort">
                                 <option value="ram">Memory (High to Low)</option>
                                 <option value="cpu">CPU % (High to Low)</option>
@@ -212,21 +257,19 @@
                                     <th>Memory Working Set</th>
                                     <th>CPU Usage %</th>
                                     <th>Threads</th>
+                                    <th>Priority</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
-                            <tbody id="proc-table-body">
-                                <!-- Dynamically injected process rows -->
-                            </tbody>
+                            <tbody id="proc-table-body"></tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </main>
 
-        <!-- Footer -->
         <footer class="footer">
-            <span>PULSE Real-Time Telemetry &bull; Powered by C# ASP.NET Core &amp; SignalR Websockets</span>
+            <span>PULSE Real-Time Telemetry Suite v1.1 &bull; C# ASP.NET Core &amp; SignalR</span>
         </footer>
     </div>
 

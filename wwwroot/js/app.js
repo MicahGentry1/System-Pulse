@@ -1,5 +1,5 @@
 /**
- * PULSE System Monitor - SignalR Real-Time Client
+ * PULSE System Monitor v1.1 - SignalR Real-Time Telemetry Client
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const ctx = this.ctx;
             ctx.clearRect(0, 0, this.w, this.h);
 
-            // Draw grid lines
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
             ctx.lineWidth = 1;
             for (let y = 0; y <= this.h; y += this.h / 4) {
@@ -58,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.stroke();
             }
 
-            // Determine scaling
             let currentMax = this.maxVal;
             let currentMin = this.minVal;
 
@@ -72,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const range = currentMax - currentMin || 1;
 
-            // Draw series
             this.dataHistory.forEach((series, sIdx) => {
                 const sConf = this.seriesList[sIdx] || { color: '#00f2fe' };
                 if (series.length < 2) return;
@@ -89,12 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     else ctx.lineTo(x, y);
                 });
 
-                // Stroke line
                 ctx.strokeStyle = sConf.color;
                 ctx.lineWidth = 2.5;
                 ctx.stroke();
 
-                // Fill gradient under curve
                 ctx.lineTo((series.length - 1) * stepX, this.h);
                 ctx.lineTo(0, this.h);
                 ctx.closePath();
@@ -127,14 +122,16 @@ document.addEventListener('DOMContentLoaded', () => {
         maxHistory: 50,
         autoScale: true,
         series: [
-            { color: '#00f2fe', fillColor: 'rgba(0, 242, 254, 0.15)' }, // Download
-            { color: '#8a2be2', fillColor: 'rgba(138, 43, 226, 0.15)' }  // Upload
+            { color: '#00f2fe', fillColor: 'rgba(0, 242, 254, 0.15)' },
+            { color: '#8a2be2', fillColor: 'rgba(138, 43, 226, 0.15)' }
         ]
     });
 
     // App State
     let latestProcesses = [];
     let activeKillPid = null;
+    let activePresetFilter = 'all';
+    const seenAlertKeys = new Set();
 
     // DOM References
     const statusEl = document.getElementById('connection-status');
@@ -142,6 +139,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const procSearchInput = document.getElementById('proc-search');
     const procSortSelect = document.getElementById('proc-sort');
     const procCountBadge = document.getElementById('proc-filtered-count');
+    const toastContainer = document.getElementById('toast-container');
+
+    // Export Dropdown
+    const exportBtn = document.getElementById('btn-export');
+    const exportMenu = document.getElementById('export-menu');
+
+    exportBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportMenu?.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', () => {
+        exportMenu?.classList.add('hidden');
+    });
+
+    // Preset Filter Chips
+    document.querySelectorAll('.filter-chips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.filter-chips .chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            activePresetFilter = chip.getAttribute('data-filter');
+            renderProcessTable();
+        });
+    });
 
     // Modal DOM
     const killModal = document.getElementById('kill-modal');
@@ -150,7 +171,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalCancelBtn = document.getElementById('modal-cancel');
     const modalConfirmBtn = document.getElementById('modal-confirm');
 
-    // Format Helpers
     function formatUptime(seconds) {
         const d = Math.floor(seconds / (3600 * 24));
         const h = Math.floor((seconds % (3600 * 24)) / 3600);
@@ -160,9 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatSpeed(kbps) {
-        if (kbps >= 1024) {
-            return (kbps / 1024).toFixed(1) + ' MB/s';
-        }
+        if (kbps >= 1024) return (kbps / 1024).toFixed(1) + ' MB/s';
         return kbps.toFixed(0) + ' KB/s';
     }
 
@@ -189,7 +207,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle Incoming Live System Telemetry
     connection.on('ReceiveMetrics', (snapshot) => {
-        // Update connection status label
         statusEl.className = 'status-indicator';
         statusEl.querySelector('.status-text').textContent = 'Live Streaming';
 
@@ -225,12 +242,21 @@ document.addEventListener('DOMContentLoaded', () => {
             ramChart.pushValues([mem.usagePercentage]);
         }
 
-        // 4. Storage Drives
+        // 4. Power & Battery
+        if (snapshot.power) {
+            const p = snapshot.power;
+            document.getElementById('power-pct-text').textContent = p.hasBattery ? `${p.batteryLifePercent}%` : 'AC';
+            document.getElementById('power-status-label').textContent = p.powerStatusText || 'AC Power';
+            document.getElementById('power-icon').textContent = p.isCharging ? '⚡' : p.isAcOnline ? '🔌' : '🔋';
+            document.getElementById('battery-bar-fill').style.width = p.hasBattery ? `${p.batteryLifePercent}%` : '100%';
+        }
+
+        // 5. Storage Drives
         if (snapshot.disks) {
             updateDrives(snapshot.disks);
         }
 
-        // 5. Network Metrics
+        // 6. Network Metrics
         if (snapshot.networkInterfaces) {
             let totalDown = 0;
             let totalUp = 0;
@@ -246,19 +272,48 @@ document.addEventListener('DOMContentLoaded', () => {
             updateNetworkInterfaces(snapshot.networkInterfaces);
         }
 
-        // 6. Processes
+        // 7. System Alerts
+        if (snapshot.alerts && snapshot.alerts.length > 0) {
+            snapshot.alerts.forEach(alert => {
+                const key = `${alert.title}:${alert.message}`;
+                if (!seenAlertKeys.has(key)) {
+                    seenAlertKeys.add(key);
+                    showToast(alert.title, alert.message, alert.type.toLowerCase());
+                    setTimeout(() => seenAlertKeys.delete(key), 30000); // 30s alert cooldown
+                }
+            });
+        }
+
+        // 8. Processes
         if (snapshot.processes) {
             latestProcesses = snapshot.processes;
             renderProcessTable();
         }
     });
 
+    // Toast Alert Notification
+    function showToast(title, message, type = 'info') {
+        if (!toastContainer) return;
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `
+            <div>
+                <strong>${escapeHtml(title)}</strong>
+                <div>${escapeHtml(message)}</div>
+            </div>
+        `;
+        toastContainer.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+
     // Core Matrix Renderer
     function updateCoreMatrix(coreUsages) {
         const matrixContainer = document.getElementById('core-matrix');
         if (!matrixContainer) return;
 
-        // Reuse existing core items if possible
         if (matrixContainer.children.length !== coreUsages.length) {
             matrixContainer.innerHTML = '';
             coreUsages.forEach((_, idx) => {
@@ -342,7 +397,12 @@ document.addEventListener('DOMContentLoaded', () => {
             p.name.toLowerCase().includes(query) || p.pid.toString().includes(query)
         );
 
-        // Sorting
+        if (activePresetFilter === 'cpu') {
+            filtered = filtered.filter(p => p.cpuPercentage >= 2.0);
+        } else if (activePresetFilter === 'ram') {
+            filtered = filtered.filter(p => p.workingSetMb >= 150.0);
+        }
+
         filtered.sort((a, b) => {
             if (sortBy === 'ram') return b.workingSetMb - a.workingSetMb;
             if (sortBy === 'cpu') return b.cpuPercentage - a.cpuPercentage;
@@ -352,8 +412,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         procCountBadge.textContent = `${filtered.length} processes`;
-
-        // Calculate max RAM for progress bar
         const maxRam = Math.max(...filtered.map(p => p.workingSetMb), 1);
 
         procTableBody.innerHTML = filtered.map(p => `
@@ -371,17 +429,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${p.cpuPercentage.toFixed(1)}%</td>
                 <td>${p.threadCount}</td>
                 <td>
+                    <select class="priority-select" data-pid="${p.pid}">
+                        <option value="Idle" ${p.priorityClass === 'Idle' ? 'selected' : ''}>Idle</option>
+                        <option value="BelowNormal" ${p.priorityClass === 'BelowNormal' ? 'selected' : ''}>Below Normal</option>
+                        <option value="Normal" ${p.priorityClass === 'Normal' ? 'selected' : ''}>Normal</option>
+                        <option value="AboveNormal" ${p.priorityClass === 'AboveNormal' ? 'selected' : ''}>Above Normal</option>
+                        <option value="High" ${p.priorityClass === 'High' ? 'selected' : ''}>High</option>
+                    </select>
+                </td>
+                <td>
                     <button class="btn-kill" data-pid="${p.pid}" data-name="${escapeHtml(p.name)}">End Task</button>
                 </td>
             </tr>
         `).join('');
 
-        // Attach event listeners to kill buttons
+        // Event Listeners for Kill Buttons
         procTableBody.querySelectorAll('.btn-kill').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const pid = parseInt(e.target.getAttribute('data-pid'));
                 const name = e.target.getAttribute('data-name');
                 openKillModal(pid, name);
+            });
+        });
+
+        // Event Listeners for Priority Select Dropdowns
+        procTableBody.querySelectorAll('.priority-select').forEach(sel => {
+            sel.addEventListener('change', async (e) => {
+                const pid = parseInt(e.target.getAttribute('data-pid'));
+                const newPriority = e.target.value;
+                try {
+                    const res = await fetch(`/api/process/${pid}/priority`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ priority: newPriority })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        showToast('Priority Updated', data.message, 'info');
+                    } else {
+                        showToast('Priority Error', data.message, 'warning');
+                    }
+                } catch (err) {
+                    showToast('Priority Error', err.message, 'warning');
+                }
             });
         });
     }
@@ -392,11 +482,9 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
-    // Filter & Sort Event Listeners
     procSearchInput.addEventListener('input', renderProcessTable);
     procSortSelect.addEventListener('change', renderProcessTable);
 
-    // Modal Kill Dialog Handlers
     function openKillModal(pid, name) {
         activeKillPid = pid;
         modalProcPid.textContent = pid;
@@ -417,41 +505,36 @@ document.addEventListener('DOMContentLoaded', () => {
         closeKillModal();
 
         try {
-            // Invoke kill via SignalR Hub or REST API
             const result = await connection.invoke("KillProcess", pidToKill);
             if (result && result.success) {
-                // Remove immediately from UI
                 latestProcesses = latestProcesses.filter(p => p.pid !== pidToKill);
                 renderProcessTable();
+                showToast('Task Ended', result.message, 'info');
             } else {
-                alert(result?.message || 'Failed to kill process');
+                showToast('Kill Failed', result?.message || 'Failed to kill process', 'warning');
             }
         } catch (err) {
-            console.error('Error terminating process:', err);
-            // Fallback REST call
             fetch(`/api/process/${pidToKill}`, { method: 'DELETE' })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
                         latestProcesses = latestProcesses.filter(p => p.pid !== pidToKill);
                         renderProcessTable();
+                        showToast('Task Ended', data.message, 'info');
                     } else {
-                        alert(data.message || 'Failed to kill process');
+                        showToast('Kill Failed', data.message, 'warning');
                     }
                 })
-                .catch(e => alert('Network error trying to kill process: ' + e.message));
+                .catch(e => showToast('Kill Error', e.message, 'warning'));
         }
     });
 
-    // Start SignalR Connection
     async function startSignalR() {
         try {
             await connection.start();
-            console.log('SignalR Telemetry connected successfully.');
             statusEl.className = 'status-indicator';
             statusEl.querySelector('.status-text').textContent = 'Live Streaming';
         } catch (err) {
-            console.error('SignalR Connection Error: ', err);
             statusEl.className = 'status-indicator danger';
             statusEl.querySelector('.status-text').textContent = 'Retrying Connection...';
             setTimeout(startSignalR, 3000);

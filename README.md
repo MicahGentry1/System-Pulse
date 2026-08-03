@@ -41,8 +41,8 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/SystemMonitor.git
-   cd SystemMonitor
+  git clone https://github.com/MicahGentry1/System-Pulse.git
+   cd System-Pulse
    ```
 
 2. Run the application:

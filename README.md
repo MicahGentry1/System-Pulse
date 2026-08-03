@@ -41,7 +41,7 @@
 
 1. Clone the repository:
    ```bash
-  git clone https://github.com/MicahGentry1/System-Pulse.git
+   git clone https://github.com/MicahGentry1/System-Pulse.git
    cd System-Pulse
    ```
 

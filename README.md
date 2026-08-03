@@ -69,6 +69,19 @@ The resulting `SystemMonitor.exe` will be saved in the `publish/` folder.
 
 ---
 
+## ⚠️ Windows SmartScreen Notice (Unsigned Executable)
+
+> [!NOTE]
+> Because `SystemMonitor.exe` is an open-source build and is **not digitally signed** with a commercial Code Signing Certificate, **Windows SmartScreen / Defender** may display a standard warning screen (*"Windows protected your PC"*) when launching the pre-compiled `.exe` for the first time.
+
+### How to Run the Pre-compiled Binary:
+1. On the Windows SmartScreen popup, click **More info**.
+2. Click **Run anyway**.
+
+> **Note on Security & Transparency**: SYSTEM PULSE is **100% open-source**. All C# backend telemetry logic, Win32 API calls, and web assets are fully visible in this repository. You can audit the code or compile your own signed/unsigned binary directly from source using `dotnet publish`.
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).

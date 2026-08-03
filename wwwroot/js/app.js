@@ -1,8 +1,27 @@
 /**
- * PULSE System Monitor v1.1 - SignalR Real-Time Telemetry Client
+ * PULSE System Monitor v1.2 - SignalR Real-Time Telemetry Client
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Theme Switcher & Persistence
+    const savedTheme = localStorage.getItem('pulse-theme') || 'cyan';
+    setTheme(savedTheme);
+
+    document.querySelectorAll('.theme-dot').forEach(dot => {
+        dot.addEventListener('click', () => {
+            const theme = dot.getAttribute('data-theme');
+            setTheme(theme);
+        });
+    });
+
+    function setTheme(theme) {
+        document.body.setAttribute('data-theme', theme);
+        localStorage.setItem('pulse-theme', theme);
+        document.querySelectorAll('.theme-dot').forEach(d => {
+            d.classList.toggle('active', d.getAttribute('data-theme') === theme);
+        });
+    }
+
     // Canvas Chart Helpers
     class TimeSeriesChart {
         constructor(canvasId, options = {}) {
@@ -129,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // App State
     let latestProcesses = [];
+    let latestConnections = [];
     let activeKillPid = null;
     let activePresetFilter = 'all';
     const seenAlertKeys = new Set();
@@ -136,6 +156,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // DOM References
     const statusEl = document.getElementById('connection-status');
     const procTableBody = document.getElementById('proc-table-body');
+    const connTableBody = document.getElementById('conn-table-body');
+    const connSearchInput = document.getElementById('conn-search');
+    const connCountBadge = document.getElementById('conn-count');
     const procSearchInput = document.getElementById('proc-search');
     const procSortSelect = document.getElementById('proc-sort');
     const procCountBadge = document.getElementById('proc-filtered-count');
@@ -184,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return kbps.toFixed(0) + ' KB/s';
     }
 
-    // Build SignalR Connection
+    // SignalR Connection
     const connection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/metrics')
         .withAutomaticReconnect([0, 1000, 2000, 5000])
@@ -205,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusEl.querySelector('.status-text').textContent = 'Disconnected';
     });
 
-    // Handle Incoming Live System Telemetry
+    // Handle Telemetry Snapshots
     connection.on('ReceiveMetrics', (snapshot) => {
         statusEl.className = 'status-indicator';
         statusEl.querySelector('.status-text').textContent = 'Live Streaming';
@@ -272,26 +295,31 @@ document.addEventListener('DOMContentLoaded', () => {
             updateNetworkInterfaces(snapshot.networkInterfaces);
         }
 
-        // 7. System Alerts
+        // 7. Active Sockets
+        if (snapshot.activeConnections) {
+            latestConnections = snapshot.activeConnections;
+            renderConnectionsTable();
+        }
+
+        // 8. Alerts
         if (snapshot.alerts && snapshot.alerts.length > 0) {
             snapshot.alerts.forEach(alert => {
                 const key = `${alert.title}:${alert.message}`;
                 if (!seenAlertKeys.has(key)) {
                     seenAlertKeys.add(key);
                     showToast(alert.title, alert.message, alert.type.toLowerCase());
-                    setTimeout(() => seenAlertKeys.delete(key), 30000); // 30s alert cooldown
+                    setTimeout(() => seenAlertKeys.delete(key), 30000);
                 }
             });
         }
 
-        // 8. Processes
+        // 9. Processes
         if (snapshot.processes) {
             latestProcesses = snapshot.processes;
             renderProcessTable();
         }
     });
 
-    // Toast Alert Notification
     function showToast(title, message, type = 'info') {
         if (!toastContainer) return;
         const toast = document.createElement('div');
@@ -309,7 +337,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 5000);
     }
 
-    // Core Matrix Renderer
     function updateCoreMatrix(coreUsages) {
         const matrixContainer = document.getElementById('core-matrix');
         if (!matrixContainer) return;
@@ -344,7 +371,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Drives Renderer
     function updateDrives(disks) {
         const listEl = document.getElementById('drives-list');
         if (!listEl) return;
@@ -373,7 +399,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    // Network Interfaces Renderer
     function updateNetworkInterfaces(ifaces) {
         const listEl = document.getElementById('net-interfaces-list');
         if (!listEl) return;
@@ -386,7 +411,34 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    // Process Table Filter, Sort & Render
+    // Connections Table Renderer
+    function renderConnectionsTable() {
+        if (!connTableBody) return;
+        const q = (connSearchInput?.value || '').toLowerCase().trim();
+
+        const filtered = latestConnections.filter(c => 
+            c.localEndPoint.toLowerCase().includes(q) ||
+            c.remoteEndPoint.toLowerCase().includes(q) ||
+            c.state.toLowerCase().includes(q) ||
+            c.port.toString().includes(q)
+        );
+
+        connCountBadge.textContent = `${filtered.length} active`;
+
+        connTableBody.innerHTML = filtered.map(c => `
+            <tr>
+                <td><span class="speed-badge down">${c.protocol}</span></td>
+                <td><strong class="proc-pid">${escapeHtml(c.localEndPoint)}</strong></td>
+                <td>${escapeHtml(c.remoteEndPoint)}</td>
+                <td><span class="proc-name">${c.port}</span></td>
+                <td>${escapeHtml(c.state)}</td>
+            </tr>
+        `).join('');
+    }
+
+    connSearchInput?.addEventListener('input', renderConnectionsTable);
+
+    // Process Table Renderer
     function renderProcessTable() {
         if (!procTableBody) return;
 
@@ -443,7 +495,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>
         `).join('');
 
-        // Event Listeners for Kill Buttons
         procTableBody.querySelectorAll('.btn-kill').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const pid = parseInt(e.target.getAttribute('data-pid'));
@@ -452,7 +503,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Event Listeners for Priority Select Dropdowns
         procTableBody.querySelectorAll('.priority-select').forEach(sel => {
             sel.addEventListener('change', async (e) => {
                 const pid = parseInt(e.target.getAttribute('data-pid'));

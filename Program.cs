@@ -19,7 +19,6 @@ namespace SystemMonitor
         {
             ApplicationConfiguration.Initialize();
 
-            // 1. Build and start ASP.NET Core Web Server background host
             var builder = WebApplication.CreateBuilder(args);
 
             builder.Services.AddSingleton<SystemMetricsCollector>();
@@ -82,7 +81,6 @@ namespace SystemMonitor
                 }
             });
 
-            // 2. Create Native Windows Desktop Form with WebView2 embedded
             var mainForm = new MainWindow(webApp);
             Application.Run(mainForm);
         }
@@ -92,6 +90,8 @@ namespace SystemMonitor
     {
         private readonly WebView2 _webView;
         private readonly WebApplication _webApp;
+        private readonly NotifyIcon _trayIcon;
+        private bool _allowExit = false;
 
         public MainWindow(WebApplication webApp)
         {
@@ -108,12 +108,27 @@ namespace SystemMonitor
             {
                 Dock = DockStyle.Fill
             };
-
             Controls.Add(_webView);
+
+            // Create System Tray Icon & Context Menu
+            var trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add("Open SYSTEM PULSE", null, (s, e) => RestoreWindow());
+            trayMenu.Items.Add("-");
+            trayMenu.Items.Add("Exit", null, (s, e) => ForceExit());
+
+            _trayIcon = new NotifyIcon
+            {
+                Text = "SYSTEM PULSE - Real-Time Monitor",
+                Icon = SystemIcons.Application,
+                ContextMenuStrip = trayMenu,
+                Visible = true
+            };
+
+            _trayIcon.DoubleClick += (s, e) => RestoreWindow();
 
             InitializeWebViewAsync();
 
-            FormClosed += MainWindow_FormClosed;
+            FormClosing += MainWindow_FormClosing;
         }
 
         private async void InitializeWebViewAsync()
@@ -121,32 +136,48 @@ namespace SystemMonitor
             try
             {
                 await _webView.EnsureCoreWebView2Async();
-                
-                // Customize WebView background color to match dark glassmorphism
                 _webView.DefaultBackgroundColor = Color.FromArgb(7, 10, 18);
-                
-                // Disable browser context menus for app-like native feel
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-
-                // Navigate to local Kestrel server
                 _webView.CoreWebView2.Navigate("http://localhost:5200");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}\nEnsure Microsoft Edge WebView2 runtime is installed.", 
-                    "WebView Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", "WebView Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private async void MainWindow_FormClosed(object? sender, FormClosedEventArgs e)
+        private void RestoreWindow()
         {
+            Show();
+            WindowState = FormWindowState.Normal;
+            Activate();
+        }
+
+        private void ForceExit()
+        {
+            _allowExit = true;
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            Close();
+            Application.Exit();
+        }
+
+        private async void MainWindow_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            if (!_allowExit)
+            {
+                e.Cancel = true;
+                Hide();
+                _trayIcon.ShowBalloonTip(2000, "SYSTEM PULSE", "App is running in the background system tray.", ToolTipIcon.Info);
+                return;
+            }
+
             try
             {
                 await _webApp.StopAsync();
             }
             catch { }
-            Application.Exit();
         }
     }
 }

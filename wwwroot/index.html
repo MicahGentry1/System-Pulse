@@ -25,7 +25,7 @@
                 </div>
                 <div class="brand-text">
                     <h1>SYSTEM <span>PULSE</span></h1>
-                    <span class="sub-badge">C# .NET 10 Telemetry Suite</span>
+                    <span class="sub-badge">C# .NET 10 Telemetry Suite v1.2</span>
                 </div>
             </div>
 
@@ -49,6 +49,15 @@
             </div>
 
             <div class="header-actions">
+                <!-- Theme Accent Picker -->
+                <div class="theme-picker">
+                    <button class="theme-dot cyan active" data-theme="cyan" title="Cyber Cyan"></button>
+                    <button class="theme-dot violet" data-theme="violet" title="Neon Violet"></button>
+                    <button class="theme-dot emerald" data-theme="emerald" title="Emerald Pulse"></button>
+                    <button class="theme-dot crimson" data-theme="crimson" title="Crimson Red"></button>
+                    <button class="theme-dot gold" data-theme="gold" title="Gold Horizon"></button>
+                </div>
+
                 <!-- Export Telemetry Dropdown -->
                 <div class="export-dropdown">
                     <button class="btn btn-secondary btn-sm" id="btn-export">
@@ -57,7 +66,7 @@
                             <polyline points="7 10 12 15 17 10"></polyline>
                             <line x1="12" y1="15" x2="12" y2="3"></line>
                         </svg>
-                        Export Report
+                        Export
                     </button>
                     <div class="export-menu hidden" id="export-menu">
                         <a href="/api/system/export?format=json" download class="export-opt">Export JSON</a>
@@ -181,7 +190,7 @@
                 </div>
             </div>
 
-            <!-- Network Card (Full Width) -->
+            <!-- Network Bandwidth Card (Full Width) -->
             <div class="card network-card full-width">
                 <div class="card-header">
                     <h2>
@@ -203,6 +212,41 @@
                         <canvas id="net-chart"></canvas>
                     </div>
                     <div class="net-interfaces-list" id="net-interfaces-list"></div>
+                </div>
+            </div>
+
+            <!-- Active TCP Connections & Ports Card (Full Width) -->
+            <div class="card sockets-card full-width">
+                <div class="card-header">
+                    <div class="title-group">
+                        <h2>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                            </svg>
+                            Active Network Connections &amp; Ports
+                        </h2>
+                        <span class="badge-count" id="conn-count">0 active</span>
+                    </div>
+                    <div class="search-box">
+                        <input type="text" id="conn-search" placeholder="Search port, IP, or state...">
+                    </div>
+                </div>
+                <div class="card-body no-padding">
+                    <div class="table-wrapper">
+                        <table class="process-table">
+                            <thead>
+                                <tr>
+                                    <th>Protocol</th>
+                                    <th>Local EndPoint</th>
+                                    <th>Remote EndPoint</th>
+                                    <th>Port</th>
+                                    <th>State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="conn-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -230,10 +274,6 @@
 
                     <div class="table-controls">
                         <div class="search-box">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="11" cy="11" r="8"></circle>
-                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                            </svg>
                             <input type="text" id="proc-search" placeholder="Search name or PID...">
                         </div>
                         <div class="select-box">
@@ -269,7 +309,7 @@
         </main>
 
         <footer class="footer">
-            <span>PULSE Real-Time Telemetry Suite v1.1 &bull; C# ASP.NET Core &amp; SignalR</span>
+            <span>PULSE Real-Time Telemetry Suite v1.2 &bull; C# ASP.NET Core &amp; WebView2</span>
         </footer>
     </div>
 

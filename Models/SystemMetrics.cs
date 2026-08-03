@@ -12,6 +12,7 @@ namespace SystemMonitor.Models
         public PowerMetrics Power { get; set; } = new();
         public List<DiskMetrics> Disks { get; set; } = new();
         public List<NetworkMetrics> NetworkInterfaces { get; set; } = new();
+        public List<NetworkConnectionItem> ActiveConnections { get; set; } = new();
         public List<ProcessItem> Processes { get; set; } = new();
         public List<SystemAlert> Alerts { get; set; } = new();
     }
@@ -76,6 +77,15 @@ namespace SystemMonitor.Models
         public double TotalSentMb { get; set; }
     }
 
+    public class NetworkConnectionItem
+    {
+        public string LocalEndPoint { get; set; } = string.Empty;
+        public string RemoteEndPoint { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty;
+        public string Protocol { get; set; } = "TCP";
+        public int Port { get; set; }
+    }
+
     public class ProcessItem
     {
         public int Pid { get; set; }
@@ -89,7 +99,7 @@ namespace SystemMonitor.Models
 
     public class SystemAlert
     {
-        public string Type { get; set; } = "Info"; // Info, Warning, Critical
+        public string Type { get; set; } = "Info";
         public string Title { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;

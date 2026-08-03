@@ -21,7 +21,6 @@ namespace SystemMonitor.Services
         private bool _isPerformanceCounterAvailable = false;
         private readonly string _cpuName = string.Empty;
 
-        // P/Invoke for physical RAM on Windows
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private class MEMORYSTATUSEX
         {
@@ -45,13 +44,12 @@ namespace SystemMonitor.Services
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);
 
-        // P/Invoke for Battery and Power Status
         [StructLayout(LayoutKind.Sequential)]
         private struct SYSTEM_POWER_STATUS
         {
-            public byte ACLineStatus; // 0 = Offline, 1 = Online, 255 = Unknown
-            public byte BatteryFlag;  // 1 = High, 2 = Low, 4 = Critical, 8 = Charging, 128 = No battery
-            public byte BatteryLifePercent; // 0-100 or 255
+            public byte ACLineStatus;
+            public byte BatteryFlag;
+            public byte BatteryLifePercent;
             public byte SystemStatusFlag;
             public int BatteryLifeTime;
             public int BatteryFullLifeTime;
@@ -121,12 +119,11 @@ namespace SystemMonitor.Services
                 Power = GetPowerMetrics(),
                 Disks = GetDiskMetrics(),
                 NetworkInterfaces = GetNetworkMetrics(),
+                ActiveConnections = GetActiveNetworkConnections(),
                 Processes = GetTopProcesses(80)
             };
 
-            // Evaluate Alert Rules
             snapshot.Alerts = EvaluateAlerts(snapshot);
-
             return snapshot;
         }
 
@@ -354,6 +351,33 @@ namespace SystemMonitor.Services
             }
             catch { }
 
+            return list;
+        }
+
+        private List<NetworkConnectionItem> GetActiveNetworkConnections()
+        {
+            var list = new List<NetworkConnectionItem>();
+            try
+            {
+                var ipProps = IPGlobalProperties.GetIPGlobalProperties();
+                var tcpConns = ipProps.GetActiveTcpConnections();
+                foreach (var conn in tcpConns.Take(50))
+                {
+                    string remote = conn.RemoteEndPoint.Address.ToString();
+                    if (remote == "0.0.0.0" || remote == "::") remote = "Listening";
+                    else remote = $"{remote}:{conn.RemoteEndPoint.Port}";
+
+                    list.Add(new NetworkConnectionItem
+                    {
+                        LocalEndPoint = $"{conn.LocalEndPoint.Address}:{conn.LocalEndPoint.Port}",
+                        RemoteEndPoint = remote,
+                        State = conn.State.ToString(),
+                        Protocol = "TCP",
+                        Port = conn.LocalEndPoint.Port
+                    });
+                }
+            }
+            catch { }
             return list;
         }
 

@@ -1,0 +1,23 @@
+# .NET Build Outputs
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE Files
+.vs/
+.idea/
+*.suo
+*.user
+*.userprefs
+
+# OS Files
+Thumbs.db
+Desktop.ini
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# Ignore local published binaries if building from source
+# (Publish output can be generated with dotnet publish)
+publish/

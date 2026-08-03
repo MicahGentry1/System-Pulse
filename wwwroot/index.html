@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PULSE C# System Monitor</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- SignalR Client Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Header -->
+        <header class="header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>SYSTEM <span>PULSE</span></h1>
+                    <span class="sub-badge">C# .NET 10 Telemetry Engine</span>
+                </div>
+            </div>
+
+            <div class="system-summary-strip">
+                <div class="stat-badge">
+                    <span class="label">HOST</span>
+                    <span class="val" id="sys-hostname">---</span>
+                </div>
+                <div class="stat-badge">
+                    <span class="label">OS</span>
+                    <span class="val" id="sys-os">---</span>
+                </div>
+                <div class="stat-badge">
+                    <span class="label">CPU</span>
+                    <span class="val" id="sys-cpuname">---</span>
+                </div>
+                <div class="stat-badge highlight">
+                    <span class="label">UPTIME</span>
+                    <span class="val" id="sys-uptime">00:00:00</span>
+                </div>
+            </div>
+
+            <div class="status-indicator" id="connection-status">
+                <span class="pulse-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-grid">
+            <!-- CPU Card -->
+            <div class="card cpu-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                            <rect x="9" y="9" width="6" height="6"></rect>
+                            <line x1="9" y1="1" x2="9" y2="4"></line>
+                            <line x1="15" y1="1" x2="15" y2="4"></line>
+                            <line x1="9" y1="20" x2="9" y2="23"></line>
+                            <line x1="15" y1="20" x2="15" y2="23"></line>
+                            <line x1="20" y1="9" x2="23" y2="9"></line>
+                            <line x1="20" y1="15" x2="23" y2="15"></line>
+                            <line x1="1" y1="9" x2="4" y2="9"></line>
+                            <line x1="1" y1="15" x2="4" y2="15"></line>
+                        </svg>
+                        CPU Utilization
+                    </h2>
+                    <span class="big-metric" id="cpu-total-text">0%</span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="cpu-chart"></canvas>
+                    </div>
+                    <div class="quick-meta">
+                        <div>Processes: <strong id="cpu-process-count">0</strong></div>
+                        <div>Threads: <strong id="cpu-thread-count">0</strong></div>
+                        <div>Cores: <strong id="cpu-core-count">0</strong></div>
+                    </div>
+                    <div class="core-matrix-title">Logical Core Load</div>
+                    <div class="core-matrix-grid" id="core-matrix">
+                        <!-- Dynamically injected core bars -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Memory Card -->
+            <div class="card memory-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M6 19v-3a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"></path>
+                            <path d="M6 5v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V5"></path>
+                            <line x1="12" y1="12" x2="12.01" y2="12"></line>
+                        </svg>
+                        Physical Memory (RAM)
+                    </h2>
+                    <span class="big-metric violet" id="ram-pct-text">0%</span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="ram-chart"></canvas>
+                    </div>
+                    <div class="ram-details-bar">
+                        <div class="ram-progress-bg">
+                            <div class="ram-progress-fill" id="ram-progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div class="ram-labels">
+                            <span>Used: <strong id="ram-used">0 GB</strong></span>
+                            <span>Free: <strong id="ram-free">0 GB</strong></span>
+                            <span>Total: <strong id="ram-total">0 GB</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Card -->
+            <div class="card storage-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="12" x2="2" y2="12"></line>
+                            <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>
+                            <line x1="6" y1="16" x2="6.01" y2="16"></line>
+                            <line x1="10" y1="16" x2="10.01" y2="16"></line>
+                        </svg>
+                        Storage Drives
+                    </h2>
+                </div>
+                <div class="card-body">
+                    <div class="drives-list" id="drives-list">
+                        <!-- Dynamically injected drive rows -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Card -->
+            <div class="card network-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                            <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                            <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                        </svg>
+                        Network Bandwidth
+                    </h2>
+                    <div class="net-speed-badges">
+                        <span class="speed-badge down">↓ <span id="net-down-speed">0 KB/s</span></span>
+                        <span class="speed-badge up">↑ <span id="net-up-speed">0 KB/s</span></span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="net-chart"></canvas>
+                    </div>
+                    <div class="net-interfaces-list" id="net-interfaces-list">
+                        <!-- Dynamically injected interface details -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Process Manager Card (Full Width) -->
+            <div class="card process-card full-width">
+                <div class="card-header process-header">
+                    <div class="title-group">
+                        <h2>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="3" width="7" height="7"></rect>
+                                <rect x="14" y="14" width="7" height="7"></rect>
+                                <rect x="3" y="14" width="7" height="7"></rect>
+                            </svg>
+                            Process Manager
+                        </h2>
+                        <span class="badge-count" id="proc-filtered-count">0 processes</span>
+                    </div>
+                    <div class="table-controls">
+                        <div class="search-box">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" id="proc-search" placeholder="Search by name or PID...">
+                        </div>
+                        <div class="select-box">
+                            <label>Sort By:</label>
+                            <select id="proc-sort">
+                                <option value="ram">Memory (High to Low)</option>
+                                <option value="cpu">CPU % (High to Low)</option>
+                                <option value="name">Process Name (A-Z)</option>
+                                <option value="pid">PID (Ascending)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body no-padding">
+                    <div class="table-wrapper">
+                        <table class="process-table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Process Name</th>
+                                    <th>Memory Working Set</th>
+                                    <th>CPU Usage %</th>
+                                    <th>Threads</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="proc-table-body">
+                                <!-- Dynamically injected process rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <span>PULSE Real-Time Telemetry &bull; Powered by C# ASP.NET Core &amp; SignalR Websockets</span>
+        </footer>
+    </div>
+
+    <!-- Confirm Kill Modal -->
+    <div class="modal-overlay hidden" id="kill-modal">
+        <div class="modal-card">
+            <h3>Terminate Process</h3>
+            <p>Are you sure you want to end process <strong id="modal-proc-name">---</strong> (PID: <span id="modal-proc-pid">0</span>)?</p>
+            <p class="modal-warning">Terminating critical system processes may cause instability.</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="modal-cancel">Cancel</button>
+                <button class="btn btn-danger" id="modal-confirm">Terminate Process</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

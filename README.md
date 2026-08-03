@@ -5,12 +5,13 @@
 ![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6?style=for-the-badge&logo=windows)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**SYSTEM PULSE** is a high-performance, real-time System Monitor application written in C# (.NET 10). It combines a native Windows system telemetry collector with an ASP.NET Core & SignalR backend, serving an ultra-modern dark glassmorphic web dashboard UI.
+**SYSTEM PULSE** is a high-performance, real-time System Monitor application written in C# (.NET 10). It combines a native Windows system telemetry collector with an ASP.NET Core & SignalR backend, running inside an embedded **Microsoft Edge WebView2** native Windows desktop window.
 
 ---
 
 ## ✨ Features
 
+- **💻 Native Desktop WebView Application**: `SystemMonitor.exe` runs as a native Windows desktop GUI app with an embedded WebView2 control displaying the real-time telemetry dashboard.
 - **⚡ Real-Time Telemetry Engine**: Powered by C# `System.Diagnostics` and Win32 P/Invoke APIs, streaming low-latency metric updates every 1 second via SignalR WebSockets.
 - **🖥️ CPU & Logical Core Matrix**: Visualizes overall CPU percentage, thread counts, total process count, and individual load bars for every logical core (Core 0 to Core N).
 - **🧠 Memory (RAM) Monitor**: High-precision physical RAM breakdown (Used, Free, Total GB, and Usage Percentage).

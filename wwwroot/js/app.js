@@ -1,5 +1,5 @@
 /**
- * PULSE System Monitor v1.2 - SignalR Real-Time Telemetry Client
+ * PULSE System Monitor v1.3 - SignalR Real-Time Telemetry Client
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +21,45 @@ document.addEventListener('DOMContentLoaded', () => {
             d.classList.toggle('active', d.getAttribute('data-theme') === theme);
         });
     }
+
+    // Mini-Widget Mode Toggle
+    let isMiniMode = false;
+    const miniBtn = document.getElementById('btn-mini-mode');
+    miniBtn?.addEventListener('click', async () => {
+        isMiniMode = !isMiniMode;
+        const endpoint = isMiniMode ? '/api/window/mini' : '/api/window/normal';
+        try {
+            await fetch(endpoint, { method: 'POST' });
+            miniBtn.textContent = isMiniMode ? '🗖 Normal Mode' : '🗗 Mini Mode';
+        } catch (e) { }
+    });
+
+    // CPU Benchmark Handler
+    const runBenchBtn = document.getElementById('btn-run-bench');
+    const benchSingleEl = document.getElementById('bench-single-score');
+    const benchMultiEl = document.getElementById('bench-multi-score');
+    const benchStatusText = document.getElementById('bench-status-text');
+
+    runBenchBtn?.addEventListener('click', async () => {
+        runBenchBtn.disabled = true;
+        runBenchBtn.textContent = '⏳ Testing...';
+        benchStatusText.textContent = 'Running 4s multi-core stress benchmark...';
+
+        try {
+            const res = await fetch('/api/benchmark/run', { method: 'POST' });
+            const data = await res.json();
+
+            benchSingleEl.textContent = data.singleCoreScore.toLocaleString() + ' PTS';
+            benchMultiEl.textContent = data.multiCoreScore.toLocaleString() + ' PTS';
+            benchStatusText.textContent = `Tier: ${data.scoreRating} (${(data.totalOperations / 1000000).toFixed(1)}M ops)`;
+            showToast('Benchmark Complete', `Multi-Core Score: ${data.multiCoreScore.toLocaleString()} PTS`, 'info');
+        } catch (err) {
+            benchStatusText.textContent = 'Benchmark failed: ' + err.message;
+        } finally {
+            runBenchBtn.disabled = false;
+            runBenchBtn.textContent = '⚡ Run Benchmark';
+        }
+    });
 
     // Canvas Chart Helpers
     class TimeSeriesChart {
@@ -301,7 +340,14 @@ document.addEventListener('DOMContentLoaded', () => {
             renderConnectionsTable();
         }
 
-        // 8. Alerts
+        // 8. Benchmark Update
+        if (snapshot.latestBenchmark && !snapshot.latestBenchmark.isRunning && benchSingleEl && benchMultiEl) {
+            benchSingleEl.textContent = snapshot.latestBenchmark.singleCoreScore.toLocaleString() + ' PTS';
+            benchMultiEl.textContent = snapshot.latestBenchmark.multiCoreScore.toLocaleString() + ' PTS';
+            benchStatusText.textContent = `Tier: ${snapshot.latestBenchmark.scoreRating}`;
+        }
+
+        // 9. Alerts
         if (snapshot.alerts && snapshot.alerts.length > 0) {
             snapshot.alerts.forEach(alert => {
                 const key = `${alert.title}:${alert.message}`;
@@ -313,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // 9. Processes
+        // 10. Processes
         if (snapshot.processes) {
             latestProcesses = snapshot.processes;
             renderProcessTable();
@@ -411,7 +457,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('');
     }
 
-    // Connections Table Renderer
     function renderConnectionsTable() {
         if (!connTableBody) return;
         const q = (connSearchInput?.value || '').toLowerCase().trim();
@@ -438,7 +483,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     connSearchInput?.addEventListener('input', renderConnectionsTable);
 
-    // Process Table Renderer
     function renderProcessTable() {
         if (!procTableBody) return;
 

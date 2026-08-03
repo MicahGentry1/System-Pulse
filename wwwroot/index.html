@@ -11,7 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
 </head>
 <body>
-    <div class="app-container">
+    <div class="app-container" id="app-container">
         <!-- Toast Alert Container -->
         <div class="toast-container" id="toast-container"></div>
 
@@ -25,7 +25,7 @@
                 </div>
                 <div class="brand-text">
                     <h1>SYSTEM <span>PULSE</span></h1>
-                    <span class="sub-badge">C# .NET 10 Telemetry Suite v1.2</span>
+                    <span class="sub-badge">C# .NET 10 Telemetry Suite v1.3</span>
                 </div>
             </div>
 
@@ -57,6 +57,11 @@
                     <button class="theme-dot crimson" data-theme="crimson" title="Crimson Red"></button>
                     <button class="theme-dot gold" data-theme="gold" title="Gold Horizon"></button>
                 </div>
+
+                <!-- Mini-Widget Toggle -->
+                <button class="btn btn-secondary btn-sm" id="btn-mini-mode" title="Toggle Floating Mini-Widget">
+                    🗗 Mini Mode
+                </button>
 
                 <!-- Export Telemetry Dropdown -->
                 <div class="export-dropdown">
@@ -143,6 +148,34 @@
                             <span>Free: <strong id="ram-free">0 GB</strong></span>
                             <span>Total: <strong id="ram-total">0 GB</strong></span>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CPU Benchmark Card -->
+            <div class="card bench-card">
+                <div class="card-header">
+                    <h2>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                        CPU Multi-Core Benchmark
+                    </h2>
+                    <button class="btn btn-secondary btn-sm" id="btn-run-bench">⚡ Run Benchmark</button>
+                </div>
+                <div class="card-body">
+                    <div class="bench-stats-grid">
+                        <div class="bench-badge">
+                            <span class="label">SINGLE-CORE</span>
+                            <span class="val" id="bench-single-score">---</span>
+                        </div>
+                        <div class="bench-badge highlight">
+                            <span class="label">MULTI-CORE</span>
+                            <span class="val" id="bench-multi-score">---</span>
+                        </div>
+                    </div>
+                    <div class="bench-tier-box" id="bench-tier-box">
+                        Status: <strong id="bench-status-text">Ready to test</strong>
                     </div>
                 </div>
             </div>
@@ -309,7 +342,7 @@
         </main>
 
         <footer class="footer">
-            <span>PULSE Real-Time Telemetry Suite v1.2 &bull; C# ASP.NET Core &amp; WebView2</span>
+            <span>PULSE Real-Time Telemetry Suite v1.3 &bull; C# ASP.NET Core &amp; WebView2</span>
         </footer>
     </div>
 

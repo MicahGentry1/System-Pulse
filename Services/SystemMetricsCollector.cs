@@ -6,6 +6,8 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using SystemMonitor.Models;
 
@@ -20,6 +22,9 @@ namespace SystemMonitor.Services
         private readonly Dictionary<int, (TimeSpan cpuTime, DateTime time)> _processPrevStats = new();
         private bool _isPerformanceCounterAvailable = false;
         private readonly string _cpuName = string.Empty;
+
+        private BenchmarkResult? _lastBenchmark;
+        private bool _isBenchmarkRunning = false;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private class MEMORYSTATUSEX
@@ -120,11 +125,85 @@ namespace SystemMonitor.Services
                 Disks = GetDiskMetrics(),
                 NetworkInterfaces = GetNetworkMetrics(),
                 ActiveConnections = GetActiveNetworkConnections(),
-                Processes = GetTopProcesses(80)
+                Processes = GetTopProcesses(80),
+                LatestBenchmark = _lastBenchmark
             };
 
             snapshot.Alerts = EvaluateAlerts(snapshot);
             return snapshot;
+        }
+
+        public async Task<BenchmarkResult> RunCpuBenchmarkAsync(int durationSeconds = 4)
+        {
+            if (_isBenchmarkRunning)
+            {
+                return _lastBenchmark ?? new BenchmarkResult { IsRunning = true };
+            }
+
+            _isBenchmarkRunning = true;
+            _lastBenchmark = new BenchmarkResult { IsRunning = true, TestedAt = DateTime.UtcNow };
+
+            int coreCount = Environment.ProcessorCount;
+            int halfDurationMs = (durationSeconds * 1000) / 2;
+
+            // 1. Single-Core Benchmark
+            long singleOps = 0;
+            var swSingle = Stopwatch.StartNew();
+            while (swSingle.ElapsedMilliseconds < halfDurationMs)
+            {
+                for (int i = 0; i < 50000; i++)
+                {
+                    double dummy = Math.Sqrt(i) * Math.Sin(i);
+                }
+                singleOps += 50000;
+            }
+            swSingle.Stop();
+
+            int singleScore = (int)((singleOps / Math.Max(0.1, swSingle.Elapsed.TotalSeconds)) / 20000);
+
+            // 2. Multi-Core Benchmark
+            long multiOps = 0;
+            var swMulti = Stopwatch.StartNew();
+            var tasks = new Task[coreCount];
+
+            for (int t = 0; t < coreCount; t++)
+            {
+                tasks[t] = Task.Run(() =>
+                {
+                    long localOps = 0;
+                    var sw = Stopwatch.StartNew();
+                    while (sw.ElapsedMilliseconds < halfDurationMs)
+                    {
+                        for (int i = 0; i < 50000; i++)
+                        {
+                            double dummy = Math.Sqrt(i) * Math.Sin(i);
+                        }
+                        localOps += 50000;
+                    }
+                    Interlocked.Add(ref multiOps, localOps);
+                });
+            }
+
+            await Task.WhenAll(tasks);
+            swMulti.Stop();
+
+            int multiScore = (int)((multiOps / Math.Max(0.1, swMulti.Elapsed.TotalSeconds)) / 20000);
+
+            string rating = multiScore > 15000 ? "Extreme Tier" : multiScore > 8000 ? "High Performance" : "Standard Core";
+
+            _lastBenchmark = new BenchmarkResult
+            {
+                IsRunning = false,
+                SingleCoreScore = singleScore,
+                MultiCoreScore = multiScore,
+                TotalOperations = singleOps + multiOps,
+                DurationSeconds = durationSeconds,
+                ScoreRating = rating,
+                TestedAt = DateTime.UtcNow
+            };
+
+            _isBenchmarkRunning = false;
+            return _lastBenchmark;
         }
 
         private SystemInfo GetSystemInfo()

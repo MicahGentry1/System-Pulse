@@ -16,12 +16,13 @@ namespace SystemMonitor
 {
     public static class Program
     {
+        public static MainWindow? MainWindowInstance { get; private set; }
+
         [STAThread]
         public static void Main(string[] args)
         {
             ApplicationConfiguration.Initialize();
 
-            // Set ContentRoot and WebRoot explicitly to exe folder so static files work anywhere
             var baseDir = AppContext.BaseDirectory;
             var webRoot = Path.Combine(baseDir, "wwwroot");
 
@@ -47,6 +48,24 @@ namespace SystemMonitor
             webApp.MapGet("/api/system/snapshot", (SystemMetricsCollector collector) =>
             {
                 return Results.Ok(collector.CollectSnapshot());
+            });
+
+            webApp.MapPost("/api/benchmark/run", async (SystemMetricsCollector collector) =>
+            {
+                var res = await collector.RunCpuBenchmarkAsync(4);
+                return Results.Ok(res);
+            });
+
+            webApp.MapPost("/api/window/mini", () =>
+            {
+                MainWindowInstance?.SetMiniMode(true);
+                return Results.Ok(new { success = true });
+            });
+
+            webApp.MapPost("/api/window/normal", () =>
+            {
+                MainWindowInstance?.SetMiniMode(false);
+                return Results.Ok(new { success = true });
             });
 
             webApp.MapDelete("/api/process/{pid:int}", (int pid, SystemMetricsCollector collector) =>
@@ -79,7 +98,6 @@ namespace SystemMonitor
                 return Results.File(System.Text.Encoding.UTF8.GetBytes(jsonStr), "application/json", $"system_telemetry_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
             });
 
-            // Start Kestrel web server on http://localhost:5200 asynchronously
             Task.Run(async () =>
             {
                 try
@@ -92,8 +110,8 @@ namespace SystemMonitor
                 }
             });
 
-            var mainForm = new MainWindow(webApp);
-            Application.Run(mainForm);
+            MainWindowInstance = new MainWindow(webApp);
+            Application.Run(MainWindowInstance);
         }
     }
 
@@ -103,6 +121,7 @@ namespace SystemMonitor
         private readonly WebApplication _webApp;
         private readonly NotifyIcon _trayIcon;
         private bool _allowExit = false;
+        private bool _isMiniMode = false;
 
         public MainWindow(WebApplication webApp)
         {
@@ -111,7 +130,7 @@ namespace SystemMonitor
             Text = "SYSTEM PULSE - Real-Time C# System Monitor";
             Width = 1420;
             Height = 920;
-            MinimumSize = new Size(900, 600);
+            MinimumSize = new Size(340, 220);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(7, 10, 18);
 
@@ -137,8 +156,31 @@ namespace SystemMonitor
             _trayIcon.DoubleClick += (s, e) => RestoreWindow();
 
             InitializeWebViewAsync();
-
             FormClosing += MainWindow_FormClosing;
+        }
+
+        public void SetMiniMode(bool enable)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => SetMiniMode(enable)));
+                return;
+            }
+
+            _isMiniMode = enable;
+            if (enable)
+            {
+                TopMost = true;
+                Size = new Size(360, 240);
+                FormBorderStyle = FormBorderStyle.SizableToolWindow;
+            }
+            else
+            {
+                TopMost = false;
+                Size = new Size(1420, 920);
+                FormBorderStyle = FormBorderStyle.Sizable;
+                StartPosition = FormStartPosition.CenterScreen;
+            }
         }
 
         private async void InitializeWebViewAsync()
@@ -150,7 +192,6 @@ namespace SystemMonitor
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
-                // Wait until local Kestrel server is online before navigating
                 using (var httpClient = new HttpClient())
                 {
                     for (int i = 0; i < 20; i++)
@@ -176,6 +217,7 @@ namespace SystemMonitor
         private void RestoreWindow()
         {
             Show();
+            SetMiniMode(false);
             WindowState = FormWindowState.Normal;
             Activate();
         }

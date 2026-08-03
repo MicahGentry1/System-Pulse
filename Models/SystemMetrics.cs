@@ -15,6 +15,7 @@ namespace SystemMonitor.Models
         public List<NetworkConnectionItem> ActiveConnections { get; set; } = new();
         public List<ProcessItem> Processes { get; set; } = new();
         public List<SystemAlert> Alerts { get; set; } = new();
+        public BenchmarkResult? LatestBenchmark { get; set; }
     }
 
     public class SystemInfo
@@ -103,6 +104,17 @@ namespace SystemMonitor.Models
         public string Title { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
+
+    public class BenchmarkResult
+    {
+        public bool IsRunning { get; set; }
+        public int SingleCoreScore { get; set; }
+        public int MultiCoreScore { get; set; }
+        public long TotalOperations { get; set; }
+        public double DurationSeconds { get; set; }
+        public string ScoreRating { get; set; } = "Not Tested";
+        public DateTime TestedAt { get; set; } = DateTime.UtcNow;
     }
 
     public class ProcessActionResult

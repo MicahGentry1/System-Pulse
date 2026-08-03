@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.IO;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.AspNetCore.Builder;
@@ -19,7 +21,16 @@ namespace SystemMonitor
         {
             ApplicationConfiguration.Initialize();
 
-            var builder = WebApplication.CreateBuilder(args);
+            // Set ContentRoot and WebRoot explicitly to exe folder so static files work anywhere
+            var baseDir = AppContext.BaseDirectory;
+            var webRoot = Path.Combine(baseDir, "wwwroot");
+
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                Args = args,
+                ContentRootPath = baseDir,
+                WebRootPath = Directory.Exists(webRoot) ? webRoot : baseDir
+            });
 
             builder.Services.AddSingleton<SystemMetricsCollector>();
             builder.Services.AddHostedService<MetricsBackgroundService>();
@@ -110,7 +121,6 @@ namespace SystemMonitor
             };
             Controls.Add(_webView);
 
-            // Create System Tray Icon & Context Menu
             var trayMenu = new ContextMenuStrip();
             trayMenu.Items.Add("Open SYSTEM PULSE", null, (s, e) => RestoreWindow());
             trayMenu.Items.Add("-");
@@ -139,6 +149,22 @@ namespace SystemMonitor
                 _webView.DefaultBackgroundColor = Color.FromArgb(7, 10, 18);
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
+                // Wait until local Kestrel server is online before navigating
+                using (var httpClient = new HttpClient())
+                {
+                    for (int i = 0; i < 20; i++)
+                    {
+                        try
+                        {
+                            var res = await httpClient.GetAsync("http://localhost:5200/api/system/snapshot");
+                            if (res.IsSuccessStatusCode) break;
+                        }
+                        catch { }
+                        await Task.Delay(200);
+                    }
+                }
+
                 _webView.CoreWebView2.Navigate("http://localhost:5200");
             }
             catch (Exception ex)

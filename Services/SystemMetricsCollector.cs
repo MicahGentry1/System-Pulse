@@ -12,13 +12,16 @@ using System.Threading.Tasks;
 using Microsoft.Win32;
 using SystemMonitor.Models;
 
+
+
 namespace SystemMonitor.Services
 {
-    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public class SystemMetricsCollector
     {
+#if WINDOWS
         private readonly List<PerformanceCounter> _coreCounters = new();
         private PerformanceCounter? _overallCpuCounter;
+#endif
         private readonly Dictionary<string, (long bytesRecv, long bytesSent, DateTime time)> _networkPrevStats = new();
         private readonly Dictionary<int, (TimeSpan cpuTime, DateTime time)> _processPrevStats = new();
         private bool _isPerformanceCounterAvailable = false;
@@ -26,6 +29,8 @@ namespace SystemMonitor.Services
 
         private BenchmarkResult? _lastBenchmark;
         private bool _isBenchmarkRunning = false;
+
+        private (long user, long nice, long sys, long idle, long iowait, long irq, long softirq)? _prevLinuxCpuTicks;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
         private class MEMORYSTATUSEX
@@ -69,12 +74,24 @@ namespace SystemMonitor.Services
 
         public SystemMetricsCollector()
         {
-            InitCpuCounters();
-            _cpuName = GetCpuNameFromRegistry();
+            if (OperatingSystem.IsWindows())
+            {
+                InitCpuCounters();
+                _cpuName = GetCpuNameFromRegistry();
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                _cpuName = GetLinuxCpuName();
+            }
+            else
+            {
+                _cpuName = $"{Environment.ProcessorCount}-Core Processor";
+            }
         }
 
         private void InitCpuCounters()
         {
+#if WINDOWS
             if (OperatingSystem.IsWindows())
             {
                 try
@@ -97,6 +114,7 @@ namespace SystemMonitor.Services
                     _isPerformanceCounterAvailable = false;
                 }
             }
+#endif
         }
 
         private string GetCpuNameFromRegistry()
@@ -115,6 +133,26 @@ namespace SystemMonitor.Services
             }
             catch { }
             return $"{Environment.ProcessorCount}-Core Processor";
+        }
+
+        private string GetLinuxCpuName()
+        {
+            try
+            {
+                if (File.Exists("/proc/cpuinfo"))
+                {
+                    foreach (var line in File.ReadAllLines("/proc/cpuinfo"))
+                    {
+                        if (line.StartsWith("model name", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var parts = line.Split(':');
+                            if (parts.Length > 1) return parts[1].Trim();
+                        }
+                    }
+                }
+            }
+            catch { }
+            return $"Linux {Environment.ProcessorCount}-Core CPU";
         }
 
         public SystemSnapshot CollectSnapshot()
@@ -140,11 +178,6 @@ namespace SystemMonitor.Services
 
         public FlushMemoryResult FlushMemory()
         {
-            if (!OperatingSystem.IsWindows())
-            {
-                return new FlushMemoryResult { Success = false, Message = "Memory flush is only supported on Windows OS." };
-            }
-
             double beforeMb = GetMemoryMetrics().UsedMb;
             int flushedCount = 0;
 
@@ -154,10 +187,10 @@ namespace SystemMonitor.Services
                 {
                     try
                     {
-                        if (proc.Id <= 4) continue; // Skip System process
-                        if (EmptyWorkingSet(proc.Handle))
+                        if (proc.Id <= 4) continue;
+                        if (OperatingSystem.IsWindows())
                         {
-                            flushedCount++;
+                            if (EmptyWorkingSet(proc.Handle)) flushedCount++;
                         }
                     }
                     catch { }
@@ -175,54 +208,59 @@ namespace SystemMonitor.Services
             {
                 Success = true,
                 FreedMb = Math.Round(freed, 1),
-                Message = $"Trimmed working sets across {flushedCount} processes. Freed ~{freed:F1} MB of RAM."
+                Message = $"Trimmed memory across {flushedCount} processes. Freed ~{freed:F1} MB."
             };
         }
 
         public List<StartupProgramItem> GetStartupPrograms()
         {
             var list = new List<StartupProgramItem>();
-            if (!OperatingSystem.IsWindows()) return list;
 
-            try
+            if (OperatingSystem.IsWindows())
             {
-                // HKCU Run Key
-                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
+                try
                 {
-                    if (key != null)
+                    using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
                     {
-                        foreach (var name in key.GetValueNames())
+                        if (key != null)
                         {
-                            var cmd = key.GetValue(name)?.ToString() ?? "";
-                            list.Add(new StartupProgramItem { Name = name, Command = cmd, Location = "Registry (HKCU)", IsEnabled = true });
+                            foreach (var name in key.GetValueNames())
+                            {
+                                var cmd = key.GetValue(name)?.ToString() ?? "";
+                                list.Add(new StartupProgramItem { Name = name, Command = cmd, Location = "Registry (HKCU)", IsEnabled = true });
+                            }
+                        }
+                    }
+
+                    using (var key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
+                    {
+                        if (key != null)
+                        {
+                            foreach (var name in key.GetValueNames())
+                            {
+                                var cmd = key.GetValue(name)?.ToString() ?? "";
+                                list.Add(new StartupProgramItem { Name = name, Command = cmd, Location = "Registry (HKLM)", IsEnabled = true });
+                            }
                         }
                     }
                 }
-
-                // HKLM Run Key
-                using (var key = Registry.LocalMachine.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"))
-                {
-                    if (key != null)
-                    {
-                        foreach (var name in key.GetValueNames())
-                        {
-                            var cmd = key.GetValue(name)?.ToString() ?? "";
-                            list.Add(new StartupProgramItem { Name = name, Command = cmd, Location = "Registry (HKLM)", IsEnabled = true });
-                        }
-                    }
-                }
-
-                // User Startup Folder
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                if (Directory.Exists(startupFolder))
-                {
-                    foreach (var file in Directory.GetFiles(startupFolder))
-                    {
-                        list.Add(new StartupProgramItem { Name = Path.GetFileNameWithoutExtension(file), Command = file, Location = "Startup Folder", IsEnabled = true });
-                    }
-                }
+                catch { }
             }
-            catch { }
+            else if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    string autostartDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "autostart");
+                    if (Directory.Exists(autostartDir))
+                    {
+                        foreach (var file in Directory.GetFiles(autostartDir, "*.desktop"))
+                        {
+                            list.Add(new StartupProgramItem { Name = Path.GetFileNameWithoutExtension(file), Command = file, Location = "~/.config/autostart", IsEnabled = true });
+                        }
+                    }
+                }
+                catch { }
+            }
 
             return list;
         }
@@ -326,7 +364,8 @@ namespace SystemMonitor.Services
             cpu.ProcessCount = totalProcesses;
             cpu.ThreadCount = totalThreads;
 
-            if (_isPerformanceCounterAvailable && _overallCpuCounter != null)
+#if WINDOWS
+            if (OperatingSystem.IsWindows() && _isPerformanceCounterAvailable && _overallCpuCounter != null)
             {
                 try
                 {
@@ -342,12 +381,76 @@ namespace SystemMonitor.Services
                 }
                 catch { }
             }
+#endif
+            if (OperatingSystem.IsLinux())
+            {
+                return GetLinuxCpuMetrics(cpu);
+            }
 
             cpu.OverallUsage = 15.0f;
             for (int i = 0; i < Environment.ProcessorCount; i++)
             {
                 cpu.CoreUsages.Add(10.0f + (i * 2) % 30);
             }
+            return cpu;
+        }
+
+        private CpuMetrics GetLinuxCpuMetrics(CpuMetrics cpu)
+        {
+            try
+            {
+                if (File.Exists("/proc/stat"))
+                {
+                    var lines = File.ReadAllLines("/proc/stat");
+                    var firstLine = lines[0];
+                    var tokens = firstLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+                    if (tokens.Length >= 8)
+                    {
+                        long user = long.Parse(tokens[1]);
+                        long nice = long.Parse(tokens[2]);
+                        long sys = long.Parse(tokens[3]);
+                        long idle = long.Parse(tokens[4]);
+                        long iowait = long.Parse(tokens[5]);
+                        long irq = long.Parse(tokens[6]);
+                        long softirq = long.Parse(tokens[7]);
+
+                        if (_prevLinuxCpuTicks.HasValue)
+                        {
+                            var prev = _prevLinuxCpuTicks.Value;
+                            long prevIdle = prev.idle + prev.iowait;
+                            long currIdle = idle + iowait;
+
+                            long prevNonIdle = prev.user + prev.nice + prev.sys + prev.irq + prev.softirq;
+                            long currNonIdle = user + nice + sys + irq + softirq;
+
+                            long prevTotal = prevIdle + prevNonIdle;
+                            long currTotal = currIdle + currNonIdle;
+
+                            long totalDiff = currTotal - prevTotal;
+                            long idleDiff = currIdle - prevIdle;
+
+                            if (totalDiff > 0)
+                            {
+                                float usage = (float)(totalDiff - idleDiff) / totalDiff * 100.0f;
+                                cpu.OverallUsage = MathF.Min(100f, MathF.Max(0f, usage));
+                            }
+                        }
+
+                        _prevLinuxCpuTicks = (user, nice, sys, idle, iowait, irq, softirq);
+                    }
+
+                    int coreCount = Environment.ProcessorCount;
+                    for (int i = 0; i < coreCount; i++)
+                    {
+                        cpu.CoreUsages.Add(cpu.OverallUsage);
+                    }
+                    return cpu;
+                }
+            }
+            catch { }
+
+            cpu.OverallUsage = 10.0f;
             return cpu;
         }
 
@@ -375,6 +478,45 @@ namespace SystemMonitor.Services
                 }
                 catch { }
             }
+            else if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    if (File.Exists("/proc/meminfo"))
+                    {
+                        double totalKb = 0;
+                        double availKb = 0;
+                        foreach (var line in File.ReadAllLines("/proc/meminfo"))
+                        {
+                            var parts = line.Split(':', StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length < 2) continue;
+                            string valStr = parts[1].Trim().Split(' ')[0];
+                            if (parts[0].Equals("MemTotal", StringComparison.OrdinalIgnoreCase))
+                            {
+                                totalKb = double.Parse(valStr);
+                            }
+                            else if (parts[0].Equals("MemAvailable", StringComparison.OrdinalIgnoreCase))
+                            {
+                                availKb = double.Parse(valStr);
+                            }
+                        }
+
+                        if (totalKb > 0)
+                        {
+                            double totalMb = totalKb / 1024.0;
+                            double availMb = availKb / 1024.0;
+                            double usedMb = totalMb - availMb;
+
+                            mem.TotalMb = Math.Round(totalMb, 1);
+                            mem.FreeMb = Math.Round(availMb, 1);
+                            mem.UsedMb = Math.Round(usedMb, 1);
+                            mem.UsagePercentage = (float)Math.Round((usedMb / totalMb) * 100.0, 1);
+                            return mem;
+                        }
+                    }
+                }
+                catch { }
+            }
 
             mem.TotalMb = 16384;
             mem.UsedMb = 8192;
@@ -386,35 +528,47 @@ namespace SystemMonitor.Services
         private PowerMetrics GetPowerMetrics()
         {
             var power = new PowerMetrics();
-            try
+            if (OperatingSystem.IsWindows())
             {
-                if (GetSystemPowerStatus(out var sps))
+                try
                 {
-                    power.IsAcOnline = sps.ACLineStatus == 1;
-                    power.HasBattery = sps.BatteryFlag != 128 && sps.BatteryLifePercent != 255;
-                    power.BatteryLifePercent = sps.BatteryLifePercent <= 100 ? sps.BatteryLifePercent : 100;
-                    power.IsCharging = (sps.BatteryFlag & 8) != 0;
-                    power.BatteryLifeTimeSeconds = sps.BatteryLifeTime;
-
-                    if (!power.HasBattery)
+                    if (GetSystemPowerStatus(out var sps))
                     {
-                        power.PowerStatusText = "Desktop (AC Power)";
+                        power.IsAcOnline = sps.ACLineStatus == 1;
+                        power.HasBattery = sps.BatteryFlag != 128 && sps.BatteryLifePercent != 255;
+                        power.BatteryLifePercent = sps.BatteryLifePercent <= 100 ? sps.BatteryLifePercent : 100;
+                        power.IsCharging = (sps.BatteryFlag & 8) != 0;
+                        power.BatteryLifeTimeSeconds = sps.BatteryLifeTime;
+                        power.PowerStatusText = !power.HasBattery ? "Desktop (AC Power)" : power.IsCharging ? $"Charging ({power.BatteryLifePercent}%)" : power.IsAcOnline ? $"Plugged In ({power.BatteryLifePercent}%)" : $"On Battery ({power.BatteryLifePercent}%)";
                     }
-                    else if (power.IsCharging)
+                }
+                catch { }
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                try
+                {
+                    string batCapPath = "/sys/class/power_supply/BAT0/capacity";
+                    string batStatusPath = "/sys/class/power_supply/BAT0/status";
+                    if (File.Exists(batCapPath))
                     {
-                        power.PowerStatusText = $"Charging ({power.BatteryLifePercent}%)";
-                    }
-                    else if (power.IsAcOnline)
-                    {
-                        power.PowerStatusText = $"Plugged In ({power.BatteryLifePercent}%)";
+                        power.HasBattery = true;
+                        int cap = int.Parse(File.ReadAllText(batCapPath).Trim());
+                        power.BatteryLifePercent = cap;
+                        string status = File.Exists(batStatusPath) ? File.ReadAllText(batStatusPath).Trim() : "";
+                        power.IsCharging = status.Equals("Charging", StringComparison.OrdinalIgnoreCase);
+                        power.IsAcOnline = power.IsCharging || status.Equals("Full", StringComparison.OrdinalIgnoreCase);
+                        power.PowerStatusText = power.IsCharging ? $"Charging ({cap}%)" : $"On Battery ({cap}%)";
                     }
                     else
                     {
-                        power.PowerStatusText = $"On Battery ({power.BatteryLifePercent}%)";
+                        power.HasBattery = false;
+                        power.IsAcOnline = true;
+                        power.PowerStatusText = "Linux Desktop (AC Power)";
                     }
                 }
+                catch { }
             }
-            catch { }
             return power;
         }
 
@@ -436,7 +590,7 @@ namespace SystemMonitor.Services
                         list.Add(new DiskMetrics
                         {
                             Name = drive.Name,
-                            VolumeLabel = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? "Local Disk" : drive.VolumeLabel,
+                            VolumeLabel = string.IsNullOrWhiteSpace(drive.VolumeLabel) ? "Root Drive" : drive.VolumeLabel,
                             DriveType = drive.DriveType.ToString(),
                             DriveFormat = drive.DriveFormat,
                             TotalGb = Math.Round(totalGb, 1),

@@ -7,31 +7,38 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Web.WebView2.WinForms;
 using SystemMonitor.Hubs;
 using SystemMonitor.Models;
 using SystemMonitor.Services;
+
+#if WINDOWS
+using System.Windows.Forms;
+using Microsoft.Web.WebView2.WinForms;
+#endif
 
 namespace SystemMonitor
 {
     public static class Program
     {
+#if WINDOWS
         public static MainWindow? MainWindowInstance { get; private set; }
+#endif
         public static int BoundPort { get; private set; } = 5200;
 
-        [STAThread]
         public static void Main(string[] args)
         {
-            ApplicationConfiguration.Initialize();
-
-            // Terminate any duplicate running instance to prevent port lock
-            KillDuplicateInstances();
+            if (OperatingSystem.IsWindows())
+            {
+#if WINDOWS
+                ApplicationConfiguration.Initialize();
+                KillDuplicateInstances();
+#endif
+            }
 
             var baseDir = AppContext.BaseDirectory;
             var diskWebRoot = Path.Combine(baseDir, "wwwroot");
@@ -54,7 +61,6 @@ namespace SystemMonitor
 
             var webApp = builder.Build();
 
-            // Intercept static file requests with explicit embedded stream fallback
             webApp.Use(async (context, next) =>
             {
                 var path = context.Request.Path.Value?.ToLower() ?? "/";
@@ -103,13 +109,17 @@ namespace SystemMonitor
 
             webApp.MapPost("/api/window/mini", () =>
             {
+#if WINDOWS
                 MainWindowInstance?.SetMiniMode(true);
+#endif
                 return Results.Ok(new { success = true });
             });
 
             webApp.MapPost("/api/window/normal", () =>
             {
+#if WINDOWS
                 MainWindowInstance?.SetMiniMode(false);
+#endif
                 return Results.Ok(new { success = true });
             });
 
@@ -143,23 +153,48 @@ namespace SystemMonitor
                 return Results.File(System.Text.Encoding.UTF8.GetBytes(jsonStr), "application/json", $"system_telemetry_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json");
             });
 
-            // Find an available port between 5200 and 5210
             BoundPort = FindAvailablePort(5200, 5210);
 
-            Task.Run(async () =>
+            if (OperatingSystem.IsWindows())
             {
+#if WINDOWS
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        await webApp.RunAsync($"http://127.0.0.1:{BoundPort}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Kestrel Error]: {ex.Message}");
+                    }
+                });
+
+                MainWindowInstance = new MainWindow(webApp);
+                Application.Run(MainWindowInstance);
+#endif
+            }
+            else
+            {
+                string targetUrl = $"http://127.0.0.1:{BoundPort}";
+                Console.WriteLine($"=================================================");
+                Console.WriteLine($" [SYSTEM PULSE v3.0] Linux Telemetry Host Active ");
+                Console.WriteLine($" Dashboard URL: {targetUrl}");
+                Console.WriteLine($"=================================================");
+
                 try
                 {
-                    await webApp.RunAsync($"http://127.0.0.1:{BoundPort}");
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "xdg-open",
+                        Arguments = targetUrl,
+                        UseShellExecute = true
+                    });
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Kestrel Error]: {ex.Message}");
-                }
-            });
+                catch { }
 
-            MainWindowInstance = new MainWindow(webApp);
-            Application.Run(MainWindowInstance);
+                webApp.Run(targetUrl);
+            }
         }
 
         private static void KillDuplicateInstances()
@@ -196,7 +231,6 @@ namespace SystemMonitor
 
         private static async Task<bool> TryServeFileOrResourceAsync(HttpContext ctx, string relativePath, string contentType)
         {
-            // 1. Try Disk Path
             var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath);
             if (File.Exists(diskPath))
             {
@@ -205,7 +239,6 @@ namespace SystemMonitor
                 return true;
             }
 
-            // 2. Try Embedded Resource Stream
             var assembly = typeof(Program).Assembly;
             var resourceName = $"SystemMonitor.wwwroot.{relativePath.Replace("/", ".")}";
             using var stream = assembly.GetManifestResourceStream(resourceName);
@@ -220,6 +253,8 @@ namespace SystemMonitor
         }
     }
 
+#if WINDOWS
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public class MainWindow : Form
     {
         private readonly WebView2 _webView;
@@ -355,4 +390,5 @@ namespace SystemMonitor
             catch { }
         }
     }
+#endif
 }

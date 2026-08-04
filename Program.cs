@@ -57,10 +57,24 @@ namespace SystemMonitor
 
             builder.Services.AddSingleton<SystemMetricsCollector>();
             builder.Services.AddHostedService<MetricsBackgroundService>();
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.SetIsOriginAllowed(_ => true)
+                          .AllowAnyHeader()
+                          .AllowAnyMethod()
+                          .AllowCredentials();
+                });
+            });
             builder.Services.AddSignalR();
             builder.Services.AddEndpointsApiExplorer();
 
             var webApp = builder.Build();
+
+            webApp.UseRouting();
+            webApp.UseCors();
+            webApp.UseWebSockets();
 
             webApp.Use(async (context, next) =>
             {

@@ -3,6 +3,16 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    window.onerror = function(message, source, lineno) {
+        console.error('[Diagnostic Error]:', message, source, lineno);
+        const statusText = document.querySelector('.status-text');
+        if (statusText) statusText.textContent = `JS Error: L${lineno}`;
+    };
+
+    window.onunhandledrejection = function(event) {
+        console.warn('[Unhandled Rejection]:', event.reason);
+    };
+
     // Theme Switcher & Persistence
     const savedTheme = localStorage.getItem('pulse-theme') || 'cyan';
     setTheme(savedTheme);

@@ -178,17 +178,17 @@ namespace SystemMonitor
             if (OperatingSystem.IsWindows())
             {
 #if WINDOWS
-                Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        await webApp.RunAsync($"http://127.0.0.1:{BoundPort}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[Kestrel Error]: {ex.Message}");
-                    }
-                });
+                    webApp.Urls.Clear();
+                    webApp.Urls.Add($"http://127.0.0.1:{BoundPort}");
+                    webApp.Start();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to start SYSTEM PULSE Kestrel Web Server on port {BoundPort}:\n\n{ex.Message}", "Server Startup Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
 
                 MainWindowInstance = new MainWindow(webApp);
                 Application.Run(MainWindowInstance);

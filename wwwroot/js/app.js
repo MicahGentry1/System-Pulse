@@ -779,12 +779,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchRestSnapshot() {
         try {
-            const res = await fetch('/api/system/snapshot');
+            const baseUrl = (window.location.origin && window.location.origin.startsWith('http'))
+                ? window.location.origin
+                : 'http://127.0.0.1:5200';
+            const res = await fetch(`${baseUrl}/api/system/snapshot`);
             if (res.ok) {
                 const snapshot = await res.json();
                 handleMetricsSnapshot(snapshot);
             }
-        } catch { }
+        } catch (err) {
+            console.warn('[REST Fetch Error]:', err);
+        }
     }
 
     async function startSignalR() {

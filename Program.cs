@@ -232,21 +232,21 @@ namespace SystemMonitor
 
         private static async Task<bool> TryServeFileOrResourceAsync(HttpContext ctx, string relativePath, string contentType)
         {
-            var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath);
-            if (File.Exists(diskPath))
-            {
-                ctx.Response.ContentType = contentType;
-                await ctx.Response.SendFileAsync(diskPath);
-                return true;
-            }
-
             var assembly = typeof(Program).Assembly;
-            var resourceName = $"SystemMonitor.wwwroot.{relativePath.Replace("/", ".")}";
+            var resourceName = $"SystemMonitor.wwwroot.{relativePath.Replace("/", ".").Replace("\\", ".")}";
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream != null)
             {
                 ctx.Response.ContentType = contentType;
                 await stream.CopyToAsync(ctx.Response.Body);
+                return true;
+            }
+
+            var diskPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", relativePath);
+            if (File.Exists(diskPath))
+            {
+                ctx.Response.ContentType = contentType;
+                await ctx.Response.SendFileAsync(diskPath);
                 return true;
             }
 

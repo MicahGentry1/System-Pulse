@@ -271,25 +271,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // SignalR Connection
-    const connection = new signalR.HubConnectionBuilder()
-        .withUrl('/hubs/metrics')
-        .withAutomaticReconnect([0, 1000, 2000, 5000])
-        .build();
+    let connection = null;
+    if (typeof signalR !== 'undefined') {
+        try {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl('/hubs/metrics')
+                .withAutomaticReconnect([0, 1000, 2000, 5000])
+                .build();
 
-    connection.onreconnecting(() => {
-        statusEl.className = 'status-indicator warning';
-        statusEl.querySelector('.status-text').textContent = 'Reconnecting...';
-    });
+            connection.onreconnecting(() => {
+                if (statusEl) {
+                    statusEl.className = 'status-indicator warning';
+                    statusEl.querySelector('.status-text').textContent = 'Reconnecting...';
+                }
+            });
 
-    connection.onreconnected(() => {
-        statusEl.className = 'status-indicator';
-        statusEl.querySelector('.status-text').textContent = 'Live Streaming';
-    });
+            connection.onreconnected(() => {
+                if (statusEl) {
+                    statusEl.className = 'status-indicator';
+                    statusEl.querySelector('.status-text').textContent = 'Live Streaming';
+                }
+            });
 
-    connection.onclose(() => {
-        statusEl.className = 'status-indicator danger';
-        statusEl.querySelector('.status-text').textContent = 'Disconnected';
-    });
+            connection.onclose(() => {
+                if (statusEl) {
+                    statusEl.className = 'status-indicator danger';
+                    statusEl.querySelector('.status-text').textContent = 'Disconnected';
+                }
+            });
+        } catch (err) {
+            console.warn('[SignalR Init Warning]:', err);
+        }
+    }
 
     // Handle Telemetry Snapshots
     const handleMetricsSnapshot = (snapshot) => {
@@ -433,7 +446,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    connection.on('ReceiveMetrics', handleMetricsSnapshot);
+    if (connection) {
+        connection.on('ReceiveMetrics', handleMetricsSnapshot);
+    }
     document.addEventListener('InitialSnapshot', (e) => handleMetricsSnapshot(e.detail));
 
     function showToast(title, message, type = 'info') {
@@ -752,7 +767,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    async function fetchRestSnapshot() {
+        try {
+            const res = await fetch('/api/system/snapshot');
+            if (res.ok) {
+                const snapshot = await res.json();
+                handleMetricsSnapshot(snapshot);
+            }
+        } catch { }
+    }
+
     async function startSignalR() {
+        if (!connection) return;
         try {
             await connection.start();
             if (statusEl) {
@@ -762,23 +788,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.warn('[SignalR Error]:', err);
             if (statusEl) {
-                statusEl.className = 'status-indicator danger';
-                statusEl.querySelector('.status-text').textContent = 'Retrying...';
+                statusEl.className = 'status-indicator';
+                statusEl.querySelector('.status-text').textContent = 'Live (REST Mode)';
             }
-            setTimeout(startSignalR, 2000);
+            setTimeout(startSignalR, 4000);
         }
     }
 
-    // Initial REST Fetch for Immediate Telemetry Render
-    fetch('/api/system/snapshot')
-        .then(res => res.json())
-        .then(snapshot => {
-            if (connection.state !== signalR.HubConnectionState.Connected) {
-                const event = new CustomEvent('InitialSnapshot', { detail: snapshot });
-                document.dispatchEvent(event);
-            }
-        })
-        .catch(() => {});
-
+    fetchRestSnapshot();
+    setInterval(fetchRestSnapshot, 1000);
     startSignalR();
 });

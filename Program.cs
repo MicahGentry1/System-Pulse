@@ -77,6 +77,10 @@ namespace SystemMonitor
                 {
                     if (await TryServeFileOrResourceAsync(context, "js/app.js", "application/javascript")) return;
                 }
+                else if (path == "/js/signalr.min.js")
+                {
+                    if (await TryServeFileOrResourceAsync(context, "js/signalr.min.js", "application/javascript")) return;
+                }
 
                 await next();
             });

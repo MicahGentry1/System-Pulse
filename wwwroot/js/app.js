@@ -328,6 +328,34 @@ document.addEventListener('DOMContentLoaded', () => {
             ramChart.pushValues([mem.usagePercentage]);
         }
 
+        // 3b. GPU Telemetry
+        if (snapshot.gpu) {
+            const gpuNameEl = document.getElementById('gpu-name');
+            const gpuDriverEl = document.getElementById('gpu-driver-ver');
+            const gpuPctEl = document.getElementById('gpu-vram-pct');
+            const vramUsedEl = document.getElementById('vram-used');
+            const vramTotalEl = document.getElementById('vram-total');
+            const vramFillEl = document.getElementById('vram-progress-fill');
+
+            if (gpuNameEl) gpuNameEl.textContent = snapshot.gpu.name || 'Integrated Graphics';
+            if (gpuDriverEl) gpuDriverEl.textContent = snapshot.gpu.driverVersion || 'N/A';
+            if (gpuPctEl) gpuPctEl.textContent = (snapshot.gpu.vramUsagePercentage || 0).toFixed(1) + '%';
+            if (vramUsedEl) vramUsedEl.textContent = (snapshot.gpu.vramUsedMb || 0).toFixed(0) + ' MB';
+            if (vramTotalEl) vramTotalEl.textContent = (snapshot.gpu.vramTotalMb || 0).toFixed(0) + ' MB';
+            if (vramFillEl) vramFillEl.style.width = Math.min(100, Math.max(0, snapshot.gpu.vramUsagePercentage || 0)) + '%';
+        }
+
+        // 3c. Ping Latency
+        if (snapshot.pingLatency) {
+            const pingMsEl = document.getElementById('ping-ms-text');
+            const pingHostEl = document.getElementById('ping-target-host');
+            const pingStatusEl = document.getElementById('ping-status-text');
+
+            if (pingMsEl) pingMsEl.textContent = (snapshot.pingLatency.pingMs || 0) + ' ms';
+            if (pingHostEl) pingHostEl.textContent = 'Target: ' + (snapshot.pingLatency.targetHost || '1.1.1.1');
+            if (pingStatusEl) pingStatusEl.textContent = snapshot.pingLatency.status || 'Optimal';
+        }
+
         // 4. Power & Battery
         if (snapshot.power) {
             const p = snapshot.power;

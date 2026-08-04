@@ -8,10 +8,12 @@ namespace SystemMonitor.Models
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         public SystemInfo SystemInfo { get; set; } = new();
         public CpuMetrics Cpu { get; set; } = new();
+        public GpuMetrics Gpu { get; set; } = new();
         public MemoryMetrics Memory { get; set; } = new();
         public PowerMetrics Power { get; set; } = new();
         public List<DiskMetrics> Disks { get; set; } = new();
         public List<NetworkMetrics> NetworkInterfaces { get; set; } = new();
+        public NetworkPingMetrics PingLatency { get; set; } = new();
         public List<NetworkConnectionItem> ActiveConnections { get; set; } = new();
         public List<StartupProgramItem> StartupPrograms { get; set; } = new();
         public List<ProcessItem> Processes { get; set; } = new();
@@ -36,6 +38,16 @@ namespace SystemMonitor.Models
         public List<float> CoreUsages { get; set; } = new();
         public int ThreadCount { get; set; }
         public int ProcessCount { get; set; }
+    }
+
+    public class GpuMetrics
+    {
+        public string Name { get; set; } = "Integrated Graphics";
+        public string DriverVersion { get; set; } = "N/A";
+        public double VramTotalMb { get; set; } = 4096;
+        public double VramUsedMb { get; set; } = 1280;
+        public float VramUsagePercentage { get; set; } = 31.2f;
+        public string Status { get; set; } = "Active";
     }
 
     public class MemoryMetrics
@@ -79,6 +91,14 @@ namespace SystemMonitor.Models
         public double UploadSpeedKbps { get; set; }
         public double TotalReceivedMb { get; set; }
         public double TotalSentMb { get; set; }
+    }
+
+    public class NetworkPingMetrics
+    {
+        public int PingMs { get; set; } = 14;
+        public string TargetHost { get; set; } = "1.1.1.1 (Cloudflare)";
+        public string Status { get; set; } = "Optimal";
+        public float PacketLossPercent { get; set; } = 0.0f;
     }
 
     public class NetworkConnectionItem

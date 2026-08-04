@@ -19,6 +19,7 @@ using SystemMonitor.Services;
 #if WINDOWS
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
+using Microsoft.Web.WebView2.Core;
 #endif
 
 namespace SystemMonitor
@@ -346,10 +347,27 @@ namespace SystemMonitor
         {
             try
             {
-                await _webView.EnsureCoreWebView2Async();
+                string userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SystemPulse", "WebView2Data");
+                if (!Directory.Exists(userDataFolder))
+                {
+                    Directory.CreateDirectory(userDataFolder);
+                }
+
+                var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+                await _webView.EnsureCoreWebView2Async(env);
+
+                try
+                {
+                    await _webView.CoreWebView2.Profile.ClearBrowsingDataAsync(
+                        CoreWebView2BrowsingDataKinds.CacheStorage | CoreWebView2BrowsingDataKinds.DiskCache
+                    );
+                }
+                catch { }
+
                 _webView.DefaultBackgroundColor = Color.FromArgb(7, 10, 18);
-                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
                 string targetUrl = $"http://127.0.0.1:{Program.BoundPort}";
 

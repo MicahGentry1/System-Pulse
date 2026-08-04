@@ -56,6 +56,11 @@ namespace SystemMonitor
                 WebRootPath = diskWebRoot
             });
 
+            builder.Services.ConfigureHttpJsonOptions(options =>
+            {
+                options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+            });
+
             builder.Services.AddSingleton<SystemMetricsCollector>();
             builder.Services.AddHostedService<MetricsBackgroundService>();
             builder.Services.AddCors(options =>
@@ -68,7 +73,11 @@ namespace SystemMonitor
                           .AllowCredentials();
                 });
             });
-            builder.Services.AddSignalR();
+            builder.Services.AddSignalR()
+                .AddJsonProtocol(options =>
+                {
+                    options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+                });
             builder.Services.AddEndpointsApiExplorer();
 
             var webApp = builder.Build();

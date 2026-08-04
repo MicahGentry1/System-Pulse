@@ -82,6 +82,14 @@ namespace SystemMonitor
 
             var webApp = builder.Build();
 
+            webApp.Use(async (context, next) =>
+            {
+                context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
+                context.Response.Headers["Pragma"] = "no-cache";
+                context.Response.Headers["Expires"] = "0";
+                await next();
+            });
+
             webApp.UseRouting();
             webApp.UseCors();
             webApp.UseWebSockets();
@@ -357,10 +365,15 @@ namespace SystemMonitor
             try
             {
                 string userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SystemPulse", "WebView2Data");
-                if (!Directory.Exists(userDataFolder))
+                try
                 {
-                    Directory.CreateDirectory(userDataFolder);
+                    if (Directory.Exists(userDataFolder))
+                    {
+                        Directory.Delete(userDataFolder, true);
+                    }
                 }
+                catch { }
+                Directory.CreateDirectory(userDataFolder);
 
                 var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
                 await _webView.EnsureCoreWebView2Async(env);

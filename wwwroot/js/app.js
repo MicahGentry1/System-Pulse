@@ -292,9 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Handle Telemetry Snapshots
-    connection.on('ReceiveMetrics', (snapshot) => {
-        statusEl.className = 'status-indicator';
-        statusEl.querySelector('.status-text').textContent = 'Live Streaming';
+    const handleMetricsSnapshot = (snapshot) => {
+        if (statusEl) {
+            statusEl.className = 'status-indicator';
+            statusEl.querySelector('.status-text').textContent = 'Live Streaming';
+        }
 
         // 1. System Info
         if (snapshot.systemInfo) {
@@ -429,7 +431,10 @@ document.addEventListener('DOMContentLoaded', () => {
             latestProcesses = procs;
             renderProcessTable();
         }
-    });
+    };
+
+    connection.on('ReceiveMetrics', handleMetricsSnapshot);
+    document.addEventListener('InitialSnapshot', (e) => handleMetricsSnapshot(e.detail));
 
     function showToast(title, message, type = 'info') {
         if (!toastContainer) return;
@@ -700,24 +705,24 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     }
 
-    procSearchInput.addEventListener('input', renderProcessTable);
-    procSortSelect.addEventListener('change', renderProcessTable);
+    procSearchInput?.addEventListener('input', renderProcessTable);
+    procSortSelect?.addEventListener('change', renderProcessTable);
 
     function openKillModal(pid, name) {
         activeKillPid = pid;
-        modalProcPid.textContent = pid;
-        modalProcName.textContent = name;
-        killModal.classList.remove('hidden');
+        if (modalProcPid) modalProcPid.textContent = pid;
+        if (modalProcName) modalProcName.textContent = name;
+        killModal?.classList.remove('hidden');
     }
 
     function closeKillModal() {
         activeKillPid = null;
-        killModal.classList.add('hidden');
+        killModal?.classList.add('hidden');
     }
 
-    modalCancelBtn.addEventListener('click', closeKillModal);
+    modalCancelBtn?.addEventListener('click', closeKillModal);
 
-    modalConfirmBtn.addEventListener('click', async () => {
+    modalConfirmBtn?.addEventListener('click', async () => {
         if (!activeKillPid) return;
         const pidToKill = activeKillPid;
         closeKillModal();
@@ -725,7 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const result = await connection.invoke("KillProcess", pidToKill);
             if (result && result.success) {
-                latestProcesses = latestProcesses.filter(p => p.pid !== pidToKill);
+                latestProcesses = latestProcesses.filter(p => (p.pid ?? p.Pid) !== pidToKill);
                 renderProcessTable();
                 showToast('Task Ended', result.message, 'info');
             } else {
@@ -736,7 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        latestProcesses = latestProcesses.filter(p => p.pid !== pidToKill);
+                        latestProcesses = latestProcesses.filter(p => (p.pid ?? p.Pid) !== pidToKill);
                         renderProcessTable();
                         showToast('Task Ended', data.message, 'info');
                     } else {
@@ -750,14 +755,30 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startSignalR() {
         try {
             await connection.start();
-            statusEl.className = 'status-indicator';
-            statusEl.querySelector('.status-text').textContent = 'Live Streaming';
+            if (statusEl) {
+                statusEl.className = 'status-indicator';
+                statusEl.querySelector('.status-text').textContent = 'Live Streaming';
+            }
         } catch (err) {
-            statusEl.className = 'status-indicator danger';
-            statusEl.querySelector('.status-text').textContent = 'Retrying Connection...';
-            setTimeout(startSignalR, 3000);
+            console.warn('[SignalR Error]:', err);
+            if (statusEl) {
+                statusEl.className = 'status-indicator danger';
+                statusEl.querySelector('.status-text').textContent = 'Retrying...';
+            }
+            setTimeout(startSignalR, 2000);
         }
     }
+
+    // Initial REST Fetch for Immediate Telemetry Render
+    fetch('/api/system/snapshot')
+        .then(res => res.json())
+        .then(snapshot => {
+            if (connection.state !== signalR.HubConnectionState.Connected) {
+                const event = new CustomEvent('InitialSnapshot', { detail: snapshot });
+                document.dispatchEvent(event);
+            }
+        })
+        .catch(() => {});
 
     startSignalR();
 });

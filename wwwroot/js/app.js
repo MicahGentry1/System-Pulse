@@ -280,12 +280,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return kbps.toFixed(0) + ' KB/s';
     }
 
+    const getBaseUrl = () => {
+        return (window.location.origin && window.location.origin.startsWith('http'))
+            ? window.location.origin
+            : 'http://127.0.0.1:5200';
+    };
+
     // SignalR Connection
     let connection = null;
     if (typeof signalR !== 'undefined') {
         try {
             connection = new signalR.HubConnectionBuilder()
-                .withUrl('/hubs/metrics')
+                .withUrl(`${getBaseUrl()}/hubs/metrics`)
                 .withAutomaticReconnect([0, 1000, 2000, 5000])
                 .build();
 
@@ -316,6 +322,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle Telemetry Snapshots
     const handleMetricsSnapshot = (snapshot) => {
+        if (!snapshot) return;
+
         if (statusEl) {
             statusEl.className = 'status-indicator';
             statusEl.querySelector('.status-text').textContent = 'Live Streaming';

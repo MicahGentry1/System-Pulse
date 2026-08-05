@@ -155,24 +155,22 @@ namespace SystemMonitor.Services
 
         public SystemSnapshot CollectSnapshot()
         {
-            var snapshot = new SystemSnapshot
-            {
-                Timestamp = DateTime.UtcNow,
-                SystemInfo = GetSystemInfo(),
-                Cpu = GetCpuMetrics(),
-                Gpu = GetGpuMetrics(),
-                Memory = GetMemoryMetrics(),
-                Power = GetPowerMetrics(),
-                Disks = GetDiskMetrics(),
-                NetworkInterfaces = GetNetworkMetrics(),
-                PingLatency = GetNetworkPingMetrics(),
-                ActiveConnections = GetActiveNetworkConnections(),
-                StartupPrograms = GetStartupPrograms(),
-                Processes = GetTopProcesses(80),
-                LatestBenchmark = _lastBenchmark
-            };
+            var snapshot = new SystemSnapshot { Timestamp = DateTime.UtcNow };
 
-            snapshot.Alerts = EvaluateAlerts(snapshot);
+            try { snapshot.SystemInfo = GetSystemInfo(); } catch { }
+            try { snapshot.Cpu = GetCpuMetrics(); } catch { }
+            try { snapshot.Gpu = GetGpuMetrics(); } catch { }
+            try { snapshot.Memory = GetMemoryMetrics(); } catch { }
+            try { snapshot.Power = GetPowerMetrics(); } catch { }
+            try { snapshot.Disks = GetDiskMetrics(); } catch { }
+            try { snapshot.NetworkInterfaces = GetNetworkMetrics(); } catch { }
+            try { snapshot.PingLatency = GetNetworkPingMetrics(); } catch { }
+            try { snapshot.ActiveConnections = GetActiveNetworkConnections(); } catch { }
+            try { snapshot.StartupPrograms = GetStartupPrograms(); } catch { }
+            try { snapshot.Processes = GetTopProcesses(80); } catch { }
+            snapshot.LatestBenchmark = _lastBenchmark;
+
+            try { snapshot.Alerts = EvaluateAlerts(snapshot); } catch { }
             return snapshot;
         }
 

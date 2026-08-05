@@ -87,7 +87,9 @@ namespace SystemMonitor
                 context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0";
                 context.Response.Headers["Pragma"] = "no-cache";
                 context.Response.Headers["Expires"] = "0";
+                LogFileDebug($"[Req] {context.Request.Method} {context.Request.Path}");
                 await next();
+                LogFileDebug($"[Res] {context.Request.Method} {context.Request.Path} => {context.Response.StatusCode}");
             });
 
             webApp.UseRouting();
@@ -121,6 +123,17 @@ namespace SystemMonitor
             webApp.UseStaticFiles();
 
             webApp.MapHub<MetricsHub>("/hubs/metrics");
+
+            webApp.MapGet("/api/debug/logs", () =>
+            {
+                try
+                {
+                    string file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SystemPulse", "debug_log.txt");
+                    if (File.Exists(file)) return Results.Text(File.ReadAllText(file), "text/plain");
+                }
+                catch { }
+                return Results.Text("No debug log found.", "text/plain");
+            });
 
             webApp.MapGet("/api/system/snapshot", (SystemMetricsCollector collector) =>
             {
@@ -264,6 +277,19 @@ namespace SystemMonitor
                 catch { }
             }
             return startPort;
+        }
+
+        public static void LogFileDebug(string message)
+        {
+            try
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SystemPulse");
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                string file = Path.Combine(dir, "debug_log.txt");
+                string line = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] {message}{Environment.NewLine}";
+                File.AppendAllText(file, line);
+            }
+            catch { }
         }
 
         private static async Task<bool> TryServeFileOrResourceAsync(HttpContext ctx, string relativePath, string contentType)

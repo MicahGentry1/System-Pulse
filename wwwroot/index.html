@@ -78,6 +78,11 @@
                     </div>
                 </div>
 
+                <!-- Diagnostic Logs Drawer Toggle -->
+                <button class="btn btn-secondary btn-sm" id="btn-toggle-logs" title="Open Live Diagnostic Console">
+                    📋 Logs
+                </button>
+
                 <div class="status-indicator" id="connection-status">
                     <span class="pulse-dot"></span>
                     <span class="status-text">Connecting...</span>
@@ -422,6 +427,21 @@
                 <button class="btn btn-danger" id="modal-confirm">Terminate Process</button>
             </div>
         </div>
+    </div>
+
+    <!-- Live Diagnostic Console Drawer -->
+    <div class="log-drawer hidden" id="diagnostic-drawer">
+        <div class="log-drawer-header">
+            <div class="log-drawer-title">
+                <span>💻 SYSTEM PULSE Diagnostic Terminal</span>
+            </div>
+            <div class="log-drawer-controls">
+                <button class="btn btn-secondary btn-sm" id="btn-copy-logs">📋 Copy Logs</button>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-logs">🧹 Clear</button>
+                <button class="btn btn-secondary btn-sm" id="btn-close-logs">✖ Close</button>
+            </div>
+        </div>
+        <div class="log-drawer-content" id="log-drawer-content"></div>
     </div>
 
     <script src="js/signalr.min.js"></script>

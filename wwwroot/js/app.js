@@ -3,14 +3,49 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Diagnostic Terminal Logger
+    const drawerEl = document.getElementById('diagnostic-drawer');
+    const drawerContentEl = document.getElementById('log-drawer-content');
+    const toggleLogsBtn = document.getElementById('btn-toggle-logs');
+    const copyLogsBtn = document.getElementById('btn-copy-logs');
+    const clearLogsBtn = document.getElementById('btn-clear-logs');
+    const closeLogsBtn = document.getElementById('btn-close-logs');
+
+    toggleLogsBtn?.addEventListener('click', () => drawerEl?.classList.toggle('hidden'));
+    closeLogsBtn?.addEventListener('click', () => drawerEl?.classList.add('hidden'));
+    clearLogsBtn?.addEventListener('click', () => { if (drawerContentEl) drawerContentEl.innerHTML = ''; });
+    copyLogsBtn?.addEventListener('click', () => {
+        if (drawerContentEl) {
+            navigator.clipboard.writeText(drawerContentEl.innerText);
+            showToast('Logs Copied', 'Diagnostic logs copied to clipboard.', 'info');
+        }
+    });
+
+    function logDiag(msg, level = 'info') {
+        const timestamp = new Date().toISOString().substring(11, 23);
+        const line = `[${timestamp}] ${msg}`;
+        console.log(`[Diagnostic] ${line}`);
+
+        if (drawerContentEl) {
+            const div = document.createElement('div');
+            div.className = `log-line ${level}`;
+            div.textContent = line;
+            drawerContentEl.appendChild(div);
+            drawerContentEl.scrollTop = drawerContentEl.scrollHeight;
+        }
+    }
+
+    logDiag(`System Pulse Client Initialized. Origin: ${window.location.origin || 'N/A'}, UserAgent: ${navigator.userAgent.substring(0, 45)}...`, 'success');
+
     window.onerror = function(message, source, lineno) {
-        console.error('[Diagnostic Error]:', message, source, lineno);
+        logDiag(`JS ERROR at L${lineno}: ${message} (${source})`, 'error');
         const statusText = document.querySelector('.status-text');
         if (statusText) statusText.textContent = `JS Error: L${lineno}`;
+        drawerEl?.classList.remove('hidden');
     };
 
     window.onunhandledrejection = function(event) {
-        console.warn('[Unhandled Rejection]:', event.reason);
+        logDiag(`Unhandled Rejection: ${event.reason}`, 'warn');
     };
 
     // Theme Switcher & Persistence
@@ -786,30 +821,48 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function fetchRestSnapshot() {
+        const baseUrl = getBaseUrl();
+        const url = `${baseUrl}/api/system/snapshot`;
         try {
-            const baseUrl = (window.location.origin && window.location.origin.startsWith('http'))
-                ? window.location.origin
-                : 'http://127.0.0.1:5200';
-            const res = await fetch(`${baseUrl}/api/system/snapshot`);
+            logDiag(`REST Fetching: ${url}...`, 'info');
+            const res = await fetch(url);
             if (res.ok) {
                 const snapshot = await res.json();
+                logDiag(`REST Snapshot OK (CPU: ${snapshot.cpu?.overallUsage?.toFixed(1) || 0}%, Mem: ${snapshot.memory?.usagePercentage?.toFixed(1) || 0}%)`, 'success');
                 handleMetricsSnapshot(snapshot);
+            } else {
+                logDiag(`REST Fetch HTTP Error ${res.status}: ${res.statusText}`, 'error');
+                if (statusEl) {
+                    statusEl.className = 'status-indicator danger';
+                    statusEl.querySelector('.status-text').textContent = `HTTP ${res.status} Error`;
+                }
+                drawerEl?.classList.remove('hidden');
             }
         } catch (err) {
-            console.warn('[REST Fetch Error]:', err);
+            logDiag(`REST Fetch Network Exception: ${err.message} (Target: ${url})`, 'error');
+            if (statusEl && statusEl.querySelector('.status-text').textContent === 'Connecting...') {
+                statusEl.className = 'status-indicator warning';
+                statusEl.querySelector('.status-text').textContent = 'Fetch Error (Retry)';
+            }
+            drawerEl?.classList.remove('hidden');
         }
     }
 
     async function startSignalR() {
-        if (!connection) return;
+        if (!connection) {
+            logDiag('SignalR client is undefined (signalr.min.js script not loaded)', 'warn');
+            return;
+        }
         try {
+            logDiag(`SignalR connecting to ${getBaseUrl()}/hubs/metrics...`, 'info');
             await connection.start();
+            logDiag('SignalR WebSockets Connection Established!', 'success');
             if (statusEl) {
                 statusEl.className = 'status-indicator';
                 statusEl.querySelector('.status-text').textContent = 'Live Streaming';
             }
         } catch (err) {
-            console.warn('[SignalR Error]:', err);
+            logDiag(`SignalR Connection Failed: ${err.message || err}`, 'warn');
             if (statusEl) {
                 statusEl.className = 'status-indicator';
                 statusEl.querySelector('.status-text').textContent = 'Live (REST Mode)';
@@ -821,4 +874,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchRestSnapshot();
     setInterval(fetchRestSnapshot, 1000);
     startSignalR();
+
+    setTimeout(() => {
+        const text = statusEl?.querySelector('.status-text')?.textContent;
+        if (text === 'Connecting...' || text?.includes('Error')) {
+            logDiag(`Connection status is "${text}" after 3s. Auto-opening diagnostic terminal.`, 'warn');
+            drawerEl?.classList.remove('hidden');
+        }
+    }, 3000);
 });

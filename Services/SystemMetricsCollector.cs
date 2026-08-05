@@ -19,10 +19,10 @@ namespace SystemMonitor.Services
 #if WINDOWS
         private readonly List<PerformanceCounter> _coreCounters = new();
         private PerformanceCounter? _overallCpuCounter;
+        private bool _isPerformanceCounterAvailable = false;
 #endif
         private readonly Dictionary<string, (long bytesRecv, long bytesSent, DateTime time)> _networkPrevStats = new();
         private readonly Dictionary<int, (TimeSpan cpuTime, DateTime time)> _processPrevStats = new();
-        private bool _isPerformanceCounterAvailable = false;
         private readonly string _cpuName = string.Empty;
 
         private BenchmarkResult? _lastBenchmark;
